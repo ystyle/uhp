@@ -4,9 +4,11 @@
   cjc-version = "1.2.0"
   compile-option = "-Woff unused"
   description = "UHP (Unified Harness Protocol) 仓颉 SDK：协议类型层 + 客户端 + 服务端骨架"
-  # stdx.net.http 的 TLS 路径需要 digest（SHA-256），cjpm 的依赖推导不会自动带上，
-  # 缺失会在最终链接阶段报 undefined reference。
-  link-option = "-lstdx.crypto.digest"
+  # 注意：M0（类型层 + SSE 解析）不依赖 stdx 的网络/TLS，故暂不声明 link-option。
+  # 接 HTTP 传输时会需要 digest（stdx.net.http 的 TLS 路径要 SHA-256，cjpm 不会自动推导）：
+  # 届时加回 link-option = "-lstdx.crypto.digest"，并确认链接器 -L 指向 cjvs 的 stdx 静态库目录。
+  # 本机实测：本仓的 bin-dependencies path-option 未生效（链接命令行里没有 stdx 的 -L），
+  # 所以现在加 -lstdx.crypto.digest 会直接报 cannot find；M1 接入 HTTP 时一并解决。
   name = "uhp"
   output-type = "static"
   version = "0.1.0"
