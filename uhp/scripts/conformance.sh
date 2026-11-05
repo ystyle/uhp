@@ -12,7 +12,8 @@
 set -euo pipefail
 
 CLASS="${1:-core}"
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+MEMBER_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$MEMBER_ROOT/.." && pwd)"   # monorepo 根（构建产物在根 target/）
 CONF_DIR="${UHP_CONFORMANCE_DIR:-$ROOT/../.uhp-research/conformance}"
 PORT="${UHP_SUT_PORT:-8471}"
 API_KEY="${UHP_API_KEY:-dev-token}"
@@ -26,7 +27,7 @@ eval "$(cjvs stdx-env zsh)"
 (cd "$ROOT" && cjpm build -j 8)
 
 echo "==> 启动 SUT（端口 $PORT）"
-"$ROOT/target/release/bin/main" "$PORT" > /tmp/uhp-sut.log 2>&1 &
+"$ROOT/target/release/bin/uhp.examples.conformance_sut" "$PORT" > /tmp/uhp-sut.log 2>&1 &
 SUT_PID=$!
 trap 'kill $SUT_PID 2>/dev/null || true' EXIT
 
@@ -46,7 +47,7 @@ import sys
 from uhp_conformance.cli import main
 sys.exit(main())
 PY
-REPORT="$ROOT/docs/conformance/pending-$CLASS.json"
+REPORT="$MEMBER_ROOT/docs/conformance/pending-$CLASS.json"
 
 # 失败也要把报告落盘——报告最该在失败时存在。先吞退出码，落盘后再按它退出。
 set +e
@@ -60,7 +61,7 @@ set -e
 
 # 报告按 <suite_version>-<class>.json 落盘（suite_version 是「我是哪个套件测的」的证据）
 VERSION=$(python3 -c "import json,sys;print(json.load(open('$REPORT'))['suite_version'])")
-mkdir -p "$ROOT/docs/conformance"
-mv "$REPORT" "$ROOT/docs/conformance/$VERSION-$CLASS.json"
-echo "==> 报告：$ROOT/docs/conformance/$VERSION-$CLASS.json（suite exit=$SUITE_EXIT）"
+mkdir -p "$MEMBER_ROOT/docs/conformance"
+mv "$REPORT" "$MEMBER_ROOT/docs/conformance/$VERSION-$CLASS.json"
+echo "==> 报告：$MEMBER_ROOT/docs/conformance/$VERSION-$CLASS.json（suite exit=$SUITE_EXIT）"
 exit "$SUITE_EXIT"

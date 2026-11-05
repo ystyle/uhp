@@ -1,6 +1,7 @@
-# uhp-cj 仓级约定
+# uhp（SDK 成员）级约定
 
-> 工作区通用约定见 `../AGENTS.md`；两者冲突时**以本文件为准**（仓内更具体）。
+> 本文件约束 SDK 成员（monorepo 的 `uhp/` 目录）。monorepo 布局与产品级命令见 [../AGENTS.md](../AGENTS.md)，
+> 工作区通用约定见 [../../AGENTS.md](../../AGENTS.md)；冲突时以本文件为准（成员内更具体）。
 
 ## 1. 定位与边界
 
@@ -9,7 +10,8 @@ UHP 是 **HTTP/1.1 + JSON(REST) + SSE** 的协议，不是 JSON-RPC。本仓交�
 
 > SDK 负责「说得对、答得对」，不负责「干得好」。agent 循环、模型调用、工具执行属于消费方。
 
-这条边界决定：不要在本仓里塞容器编排、模型 SDK、真实 base 适配器；它们通过 `HarnessDriver` 接缝接入（规划中）。
+这条边界决定：不要在本成员里塞容器编排、模型 SDK、真实 base 适配器；它们通过 `HarnessDriver` 接缝接入。
+真实适配器是**同级 workspace 成员**（`uhp-opencode/`、`uhp-acp/`），不发布、不进 SDK 制品。
 
 ## 2. 工具链与命令
 
@@ -28,7 +30,7 @@ eval "$(cjvs env zsh)" && eval "$(cjvs stdx-env zsh)"
 | 跑单个用例 | `cjpm test --filter '*keyword*'`（**通配符不是正则**：顶层 `@Test func` 用 `'*x*'`，`@Test class` 才用 `'Cls.*'`） |
 
 - 判构建成功看日志里的 `cjpm build success` / `cjpm test success`，**不要用管道取 `$?`**（工作区踩过）。
-- 单模块仓：`-j 8` 安全；将来出现真实进程 e2e 降到 `-j 4`。
+- 本成员是 workspace 的单模块成员：单独验证用 `cjpm test -j 4`；产品级（三成员）用根目录 `bash scripts/test.sh`。
 - 并发跑 `cjpm build/test` 会撞坏共享 `target/`（症状是链接错误/包版本不兼容）；先 `rm -rf target/release/<依赖包>` 再试，别改代码。
 
 ## 3. 目录与依赖方向（硬规则）
@@ -89,14 +91,15 @@ codec  <-  base  <-  generated  <-  handwritten
 
 ## 7. 文档
 
-- 仓内 `docs/` 尚未落地。落地后固定四件套：`design.md`（架构 + 取舍 + 有意不做）、
+- 仓内 `docs/` 固定四件套（已落地）：`design.md`（架构 + 取舍 + 有意不做）、
   `support.md`（端点 × 类 × 能力的支持矩阵，**实现边界的单一事实来源**）、`protocol-notes.md`（SSE 建流顺序、
   时间单位、命名边界等易踩点）、`spec-conflicts.md`（规范自相矛盾的裁定，每条带一个测试锚点）。
 - 未实现就写「未实现」；不要写「计划支持」冒充现状，也不要把 TODO 留在源码里冒充实现。
 
 ## 8. 发版
 
-- 遵循工作区 [docs/publish-scope.md](../docs/publish-scope.md)：**新包默认不发中心仓**，要发必须显式决策并更新该文件。
+- 发布范围由 monorepo 的 `workspace.toml` 决定：**只有本成员（uhp）发中心仓**，两个适配器成员在 exclude 里。
+- 遵循工作区 [docs/publish-scope.md](../../docs/publish-scope.md)：**新包默认不发中心仓**，要发必须显式决策并更新该文件。
 - 发版前闸门：`bash scripts/test.sh` 绿 + `python3 tools/gen_types.py --check` 绿 +
   `python3 tools/check_schema_sync.py` 绿 + `LICENSE` 文件补齐 + 制品解包核对。
 - 库包不得用 `[replace]`（工作区约定）；版本号在单包仓即产品版本。

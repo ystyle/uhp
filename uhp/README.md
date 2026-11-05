@@ -1,7 +1,7 @@
-# uhp-cj
+# uhp（monorepo 成员）
 
 仓颉（Cangjie）语言实现的 [Unified Harness Protocol (UHP)](https://unifiedharnessprotocol.org/spec/2026-10-19) SDK ——
-协议版本 **2026-10-19**。
+协议版本 **2026-10-19**。本仓是 uhp monorepo 的 SDK 成员（两个真实 harness 适配器是同级成员，见 [../README.md](../README.md)）。
 
 UHP 定义「产品如何通过 HTTP 驱动一个完整的 agent harness」：选择与配置 harness、发任务、跟随流式进度、
 续会话、取消、处理错误与文件、取回结果。本仓交付 **协议面 + 服务端骨架**：
@@ -35,11 +35,11 @@ UHP 定义「产品如何通过 HTTP 驱动一个完整的 agent harness」：�
 | 提问 / step 预算（T-13/T-14/T-12） | ✅ **3/3** | `ask_user` → incomplete/input_required、答案续跑、secret 不外泄、预算截断必 incomplete |
 | environments（EN 组） | ✅ **9/9** | 对象/文件/build/版本回滚/harness 挂载/只读挂载/包检查（registry 接缝）全过 |
 | memories（ME 组） | ✅ **13/13** | 树/记录/修订历史/遗忘擦除/召回/prime/实体图/时序事实全过 |
-| 真实 harness（消费方仓） | ✅ opencode 2.x | [../uhp-opencode](../uhp-opencode)：8 条测试（含全栈两轮问答）+ `real-smoke.sh` 真实跑通（shell 工具调用、permission/form → input_request） |
+| 真实 harness（成员） | ✅ opencode 2.x | [../uhp-opencode](../uhp-opencode)：11 条测试（含全栈两轮问答）+ `real-smoke.sh` 真实跑通（shell 工具调用、permission/form → input_request） |
 | 真实 harness（消费方仓） | ✅ ACP 通用 | [../uhp-acp](../uhp-acp)：5 条真 ACP 协议测试（假 agent 子进程，含 permission 两轮问答与全栈）+ `real-smoke.sh` 跑通 `opencode acp`（一次覆盖 dsh/pi/claude-code 这类 ACP agent） |
 
 > 现在能用：`UhpClient` 对接任意 UHP 服务端；`UhpHttpServer` + `HarnessDriver` 起一个**通过官方一致性套件三档全部检查**的 UHP 服务端（harness 增删改、技能包、文件上传/产物下载、会话列举/删除/分享、提问与预算、环境与记忆、插件校验/派生/导出/MCP 调用）。
-> 真实 harness：opencode 2.x 的适配器在**另一个消费方仓** [../uhp-opencode](../uhp-opencode)（含 4 条测试与真实链路冒烟脚本；按本仓边界，适配器不放进 SDK）。
+> 真实 harness：opencode 2.x 与 ACP 的适配器是 monorepo 的**同级成员** [../uhp-opencode](../uhp-opencode)、[../uhp-acp](../uhp-acp)（含测试与真实链路冒烟脚本；按本仓边界，适配器不放进 SDK 包）。
 > ACP 通用 driver 也已落地（[../uhp-acp](../uhp-acp)），`session/request_permission` 已接成 UHP 的两轮问答。
 
 ## 支持矩阵
@@ -52,14 +52,14 @@ UHP 定义「产品如何通过 HTTP 驱动一个完整的 agent harness」：�
 | 客户端 | 发现/版本协商、建任务/流式/续跑、SSE 消费、错误映射与重试、幂等键、input_items、会话/文件/容器 |
 | 服务端 | 83 个 operation（逐条见 docs/support.md §2）、任务状态机（busy / mismatch / 终态不可迁移）、EventChannel（序号 + 重放）、能力门控、HarnessDriver SPI |
 | 可选能力 | streaming / sessions / cancellation / files_input / files_output / session_listing / harness_management / session_sharing / harness_idempotency / input_requests / plugins / environments / memories 已开；harness_retirement、响应级 idempotency、input_history 如实报 false |
-| 真实适配器 | opencode 2.x 与 ACP 通用（消费方仓 [uhp-opencode](../uhp-opencode)、[uhp-acp](../uhp-acp)；能力矩阵见 docs/support.md §6） |
+| 真实适配器 | opencode 2.x 与 ACP 通用（同级成员 [uhp-opencode](../uhp-opencode)、[uhp-acp](../uhp-acp)；能力矩阵见 docs/support.md §6） |
 | 测试基线 | 142 条单元/行为测试；三档一致性报告入库；两个适配器各有真实链路 real-smoke |
 | 有意不做 | harness 级 events 流、历史路径别名、断线按 cursor 续流、二进制 multipart（理由见 docs/support.md §3、§8） |
 
 ## 目录
 
 ```
-uhp-cj/
+uhp/
 ├── cjpm.toml               # 单模块包 uhp；static；link-option 带 stdx.crypto.digest
 ├── cjpm.lock
 ├── resources/schema/       # 上游制品原样拷贝（不可改）+ manifest.json（sha256/来源/版本）
@@ -129,7 +129,7 @@ python3 tools/gen_types.py --check    # 生成物是否最新（不一致退出�
 | [`docs/spec-conflicts.md`](docs/spec-conflicts.md) | 三份真相冲突时的裁定，每条带锚点 |
 | [`docs/conformance/`](docs/conformance/) | 一致性报告（带 `suite_version`） |
 
-协议来源的调研与决策记录在工作区：`../docs/plans/2026-11-05-uhp-cj-sdk.md`（D1–D14、端点总账、真实 harness 选型）。
+协议来源的调研与决策记录在工作区：`../../docs/plans/2026-11-05-uhp-cj-sdk.md`（D1–D14、端点总账、真实 harness 选型）。
 
 ## 依赖边界
 

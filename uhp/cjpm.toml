@@ -24,23 +24,22 @@
   include = ["/src", "/LICENSE"]
   exclude = ["/docs", "/tools", "/resources", "/scripts", "/examples", "/target"]
 
-[target.x86_64-unknown-linux-gnu.bin-dependencies]
-  path-option = ["${CANGJIE_STDX_PATH}"]
 
-[target.aarch64-unknown-linux-gnu.bin-dependencies]
-  path-option = ["${CANGJIE_STDX_PATH}"]
 
-[target.x86_64-apple-darwin.bin-dependencies]
-  path-option = ["${CANGJIE_STDX_PATH}"]
 
-[target.aarch64-apple-darwin.bin-dependencies]
-  path-option = ["${CANGJIE_STDX_PATH}"]
 
-[target.x86_64-w64-mingw32.bin-dependencies]
-  path-option = ["${CANGJIE_STDX_PATH}"]
 
 # 一致性套件的被测服务端（可执行，不进制品：exclude 已挡 /examples）
 [package.package-configuration."uhp.examples.conformance_sut"]
   output-type = "executable"
   # 静态链接：SUT 常在没有 cjvs 环境的容器/CI 里跑，不能依赖 libcangjie-runtime.so
   compile-option = "--static"
+
+[target.x86_64-unknown-linux-gnu.bin-dependencies]
+  path-option = ["${CANGJIE_STDX_PATH}"]
+[target.aarch64-unknown-linux-gnu.bin-dependencies]
+  path-option = ["${CANGJIE_STDX_PATH}"]
+[target.x86_64-apple-darwin.bin-dependencies]
+  path-option = ["${CANGJIE_STDX_PATH}"]
+[target.aarch64-apple-darwin.bin-dependencies]
+  path-option = ["${CANGJIE_STDX_PATH}"]

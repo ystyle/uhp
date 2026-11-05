@@ -1,10 +1,10 @@
 # uhp-acp
 
-ACP（Agent Client Protocol）的 UHP HarnessDriver 适配器（消费方代码，不是 UHP SDK 本体）。
+ACP（Agent Client Protocol）的 UHP HarnessDriver 适配器（uhp monorepo 的参考实现成员，不发布；不是 UHP SDK 本体）。
 
-- UHP SDK：../uhp-cj
-- ACP 库：../acp-cj（Client 侧：AcpClient + SubprocessTransport）
-- 本仓：把 ACP 的 session/update 流翻译成 UHP 的 TurnSink / TurnOutcome
+- UHP SDK：../uhp（monorepo 成员）
+- ACP 库：acp 0.2.7（仓颉中心仓；本机开发时对应 ../acp-cj 源仓）
+- 本成员：把 ACP 的 session/update 流翻译成 UHP 的 TurnSink / TurnOutcome
 
 ## 已验证
 

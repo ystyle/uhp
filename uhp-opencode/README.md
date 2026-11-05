@@ -1,9 +1,9 @@
 # uhp-opencode
 
-opencode 2.x 的 UHP HarnessDriver 适配器（消费方代码，不是 UHP SDK 本体）。
+opencode 2.x 的 UHP HarnessDriver 适配器（uhp monorepo 的参考实现成员，不发布；不是 UHP SDK 本体）。
 
-- UHP SDK：../uhp-cj（协议面 + 服务端骨架）
-- 本仓：把 opencode 的 session / prompt / event 模型翻译成 UHP 的 TurnContext / TurnSink / TurnOutcome
+- UHP SDK：../uhp（monorepo 成员，协议面 + 服务端骨架）
+- 本成员：把 opencode 的 session / prompt / event 模型翻译成 UHP 的 TurnContext / TurnSink / TurnOutcome
 
 ## 已验证
 

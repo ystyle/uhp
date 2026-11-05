@@ -1,6 +1,6 @@
 [dependencies]
-  # 本仓是消费方：用 path 依赖 SDK（未发布到中心仓；发版后再改精确版本号）
-  "uhp" = { path = "../uhp-cj" }
+  # SDK 是 workspace 的 uhp 成员：按版本声明，由 workspace 解析到本地成员（不写 path 依赖）
+  "uhp" = "0.1.0"
 
 [package]
   cjc-version = "1.2.0"
@@ -16,19 +16,20 @@
   include = ["/src", "/LICENSE"]
   exclude = ["/docs", "/scripts", "/target"]
 
-[target.x86_64-unknown-linux-gnu.bin-dependencies]
-  path-option = ["${CANGJIE_STDX_PATH}"]
 
-[target.aarch64-unknown-linux-gnu.bin-dependencies]
-  path-option = ["${CANGJIE_STDX_PATH}"]
 
-[target.x86_64-apple-darwin.bin-dependencies]
-  path-option = ["${CANGJIE_STDX_PATH}"]
 
-[target.aarch64-apple-darwin.bin-dependencies]
-  path-option = ["${CANGJIE_STDX_PATH}"]
 
 # 示例：起一个 UHP 服务端，用 opencode 当 driver
 [package.package-configuration."uhp_opencode.examples.example"]
   output-type = "executable"
   compile-option = "--static"
+
+[target.x86_64-unknown-linux-gnu.bin-dependencies]
+  path-option = ["${CANGJIE_STDX_PATH}"]
+[target.aarch64-unknown-linux-gnu.bin-dependencies]
+  path-option = ["${CANGJIE_STDX_PATH}"]
+[target.x86_64-apple-darwin.bin-dependencies]
+  path-option = ["${CANGJIE_STDX_PATH}"]
+[target.aarch64-apple-darwin.bin-dependencies]
+  path-option = ["${CANGJIE_STDX_PATH}"]

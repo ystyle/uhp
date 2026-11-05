@@ -1,0 +1,8 @@
+version = 0
+
+[requires]
+  gjson = {version = "1.2.2"}
+  jsonvalue = {version = "1.1.1"}
+  sonyflake = {version = "1.0.9"}
+  acp = {version = "0.2.7"}
+  "ystyle::jsonrpc" = {version = "0.7.9"}

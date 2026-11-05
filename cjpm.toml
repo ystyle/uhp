@@ -1,0 +1,17 @@
+# uhp：一个产品，三个成员。
+#   uhp           —— UHP SDK（协议面 + 服务端骨架），唯一的发布成员
+#   uhp-opencode  —— opencode 2.x 的 HarnessDriver 适配器（参考实现，不发布）
+#   uhp-acp       —— ACP 通用 HarnessDriver 适配器（参考实现，不发布）
+[workspace]
+  members = ["uhp", "uhp-opencode", "uhp-acp"]
+  build-members = ["uhp", "uhp-opencode", "uhp-acp"]
+  test-members = ["uhp", "uhp-opencode", "uhp-acp"]
+  compile-option = ""
+  override-compile-option = ""
+  link-option = ""
+  target-dir = ""
+
+[target.aarch64-unknown-linux-gnu.bin-dependencies]
+  path-option = ["${CANGJIE_STDX_PATH}"]
+[target.aarch64-apple-darwin.bin-dependencies]
+  path-option = ["${CANGJIE_STDX_PATH}"]

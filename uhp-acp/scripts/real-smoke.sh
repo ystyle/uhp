@@ -5,7 +5,7 @@
 # 用法：bash scripts/real-smoke.sh
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-OCDIR="${OCDIR:-$ROOT/../.uhp-research/oc2}"
+OCDIR="${OCDIR:-$ROOT/../../.uhp-research/oc2}"
 OC_BIN="${OC_BIN:-$OCDIR/pkg/node_modules/@opencode/cli-linux-x64/bin/opencode}"
 PORT="${UHP_PORT:-8490}"
 WS="${WS:-$OCDIR/ws}"

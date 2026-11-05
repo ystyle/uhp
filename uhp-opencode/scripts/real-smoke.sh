@@ -8,7 +8,7 @@
 #   bash scripts/real-smoke.sh [modelID] [providerID]
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-OCDIR="${OCDIR:-$ROOT/../.uhp-research/oc2}"
+OCDIR="${OCDIR:-$ROOT/../../.uhp-research/oc2}"
 OPENCODE_BIN="${OPENCODE_BIN:-$OCDIR/pkg/node_modules/@opencode/cli-linux-x64/bin/opencode}"
 MODEL="${1:-deepseek-v4.1-flash-free}"
 PROVIDER="${2:-opencode}"
