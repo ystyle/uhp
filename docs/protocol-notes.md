@@ -142,6 +142,7 @@
 | 坑 | 正确做法 |
 |---|---|
 | `match (r.peek()) { case Some(String) => ... }` 里大写标识符被当**变量绑定**，分支永远命中 | 用枚举限定名（`JsonToken.JsonString`），字符串判别写字面量 |
+| `match (s) { case SOME_CONST => ... }` 里的 `public const String` 同样被当**变量绑定**，首个分支永远命中 | 字符串判别一律 `if (s == SOME_CONST)`；match 只用于枚举/模式 |
 | `type` 是关键字 | 字段名改 `recordType` 或用反引号原始标识符 |
 | 没有三元运算符 | 用 `if (cond) { a } else { b }` |
 | `ArrayList` 没有 `sort` / 对元组的 `contains` | 手写选择排序/比较；或用数组 + 手写循环 |
