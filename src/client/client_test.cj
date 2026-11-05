@@ -215,7 +215,7 @@ func stream_detects_sequence_gap(): Unit {
         sseOf("{\"type\":\"response.in_progress\",\"sequence_number\":1}"),
         sseOf("{\"type\":\"response.completed\",\"sequence_number\":3}")
     ]
-    let t = FakeTransport([], [chunks])
+    let t = FakeTransport([ok(discoveryBody("[\"2026-10-19\"]"))], [chunks])
     let c = newClient(t)
     let s = c.createTaskStream(CreateResponseRequest())
     var gap = -1
@@ -233,7 +233,7 @@ func stream_tolerates_unknown_events_and_stops_at_terminal(): Unit {
         sseOf("{\"type\":\"response.made.up\",\"sequence_number\":0}"),
         sseOf("{\"type\":\"response.completed\",\"sequence_number\":1}")
     ]
-    let t = FakeTransport([], [chunks])
+    let t = FakeTransport([ok(discoveryBody("[\"2026-10-19\"]"))], [chunks])
     let c = newClient(t)
     let s = c.createTaskStream(CreateResponseRequest())
     var count = 0
