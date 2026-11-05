@@ -8,6 +8,8 @@
 package uhp_acp.examples.fake_agent
 
 import acp.*
+import std.collection.ArrayList
+import ystyle::jsonrpc.Result
 import acp.types.*
 import acp.transport.*
 
@@ -20,6 +22,23 @@ main() {
         }
         if (text.contains("maxturn")) {
             return PromptResponse(StopReasonMaxTurnRequests)
+        }
+        if (text.contains("perm")) {
+            let tc = ToolCallUpdate()
+            tc.toolCallId = "call_perm"
+            tc.title = Some("Run shell command")
+            let opts = ArrayList<PermissionOption>()
+            opts.add(PermissionOption("once", "Allow once", "allow_once"))
+            opts.add(PermissionOption("reject", "Reject", "reject_once"))
+            ctx.emit(SessionUpdate.agentMessage("need permission"))
+            match (agent.requestPermission(ctx.sessionId, tc, opts)) {
+                case Result.Ok(r) =>
+                    let picked = r.outcome.optionId ?? r.outcome.outcome
+                    ctx.emit(SessionUpdate.agentMessage("perm answered: " + picked))
+                case Result.Err(e) =>
+                    ctx.emit(SessionUpdate.agentMessage("perm error: " + e))
+            }
+            return PromptResponse(StopReasonEndTurn)
         }
         if (text.contains("slow")) {
             var i = 0

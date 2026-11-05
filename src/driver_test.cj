@@ -8,6 +8,9 @@ import std.sync.{AtomicBool, Mutex}
 import std.unittest.*
 import std.unittest.testmacro.*
 import uhp.server.*
+import std.io.{ByteBuffer, InputStream}
+import stdx.encoding.json.stream.*
+import stdx.net.http.*
 import uhp.types.generated.*
 
 func fakeAgentPath(): String {
@@ -52,7 +55,10 @@ class RecordingSink <: TurnSink {
         ()
     }
 
+    public var asks: ArrayList<(String, String, Array<(String, String)>)> = ArrayList<(String, String, Array<(String, String)>)>()
+
     public func ask(kind: String, prompt: String, options: Array<(String, String)>): String {
+        this.asks.add((kind, prompt, options))
         return "inreq_test"
     }
 
@@ -134,4 +140,186 @@ func acp_cancel_sends_session_cancel(): Unit {
         case _ => ()
     }
     @Expect(cancelled, true)
+}
+
+
+@Test
+func acp_permission_becomes_input_request(): Unit {
+    let opts = AcpOptions(fakeAgentPath(), cwd: "/tmp", timeoutSeconds: 60,
+        permissionTimeoutSeconds: 60)
+    let driver = AcpDriver(opts)
+    let sink1 = RecordingSink()
+    let first = driver.run(TurnContext("uhp-acp-perm", "perm please", "m"), sink1, CancelToken())
+    var incomplete = false
+    match (first) {
+        case TurnOutcome.Incomplete(reason, _) =>
+            incomplete = true
+            @Expect(incompleteReasonName(reason), "input_required")
+        case _ => ()
+    }
+    @Expect(incomplete, true)
+    @Expect(sink1.asks.size, 1)
+    let ask1 = sink1.asks[0]
+    @Expect(ask1[0], "choice")
+    @Expect(ask1[1].contains("Run shell command"), true)
+    @Expect(ask1[2].size, 2)
+    // 续跑：答案回到挂起的权限请求，Agent 继续，本轮完成
+    let sink2 = RecordingSink()
+    let second = driver.run(TurnContext("uhp-acp-perm", "", "m", answers: ["once"]), sink2, CancelToken())
+    var completed = false
+    match (second) {
+        case TurnOutcome.Completed(_) => completed = true
+        case _ => ()
+    }
+    @Expect(completed, true)
+    @Expect(sink2.text.contains("perm answered: once"), true)
+}
+
+
+// ---- 全栈：UHP 服务端（Engine + AcpDriver） -> 假 ACP agent ----
+func acpTaskBody(input: String): String {
+    let out = ByteBuffer()
+    let w = JsonWriter(out)
+    w.startObject()
+    w.writeName("input").writeValue(input)
+    w.writeName("metadata")
+    w.startObject()
+    w.writeName("harness_id").writeValue("chrn_acp")
+    w.endObject()
+    w.writeName("stream").writeValue(false)
+    w.endObject()
+    w.flush()
+    return String.fromUtf8(out.bytes())
+}
+
+func acpAnswerBody(prev: String, requestId: String, answer: String): String {
+    let out = ByteBuffer()
+    let w = JsonWriter(out)
+    w.startObject()
+    w.writeName("previous_response_id").writeValue(prev)
+    w.writeName("input")
+    w.startArray()
+    w.startObject()
+    w.writeName("type").writeValue("input_response")
+    w.writeName("input_request_id").writeValue(requestId)
+    w.writeName("answer").writeValue(answer)
+    w.endObject()
+    w.endArray()
+    w.writeName("stream").writeValue(false)
+    w.endObject()
+    w.flush()
+    return String.fromUtf8(out.bytes())
+}
+
+func acpHttpJson(url: String, body: String): String {
+    let client = ClientBuilder().noProxy().readTimeout(Duration.second * 120).build()
+    try {
+        let req = HttpRequestBuilder()
+            .method("POST")
+            .url(url)
+            .header("authorization", "Bearer t")
+            .header("UHP-Version", "2026-10-19")
+            .header("content-type", "application/json")
+            .body(body)
+            .build()
+        let rsp = client.send(req)
+        return readAllText2(rsp.body)
+    } finally {
+        client.close()
+    }
+}
+
+func readAllText2(body: InputStream): String {
+    let chunks = ArrayList<UInt8>()
+    let buf = Array<UInt8>(8192, repeat: 0)
+    while (true) {
+        let n = body.read(buf)
+        if (n <= 0) {
+            break
+        }
+        chunks.add(all: buf[0..n])
+    }
+    return String.fromUtf8(chunks.toArray())
+}
+
+func jsonStr(text: String, key: String): String {
+    let q = "\""
+    let marker = q + key + q
+    let i = match (text.indexOf(marker)) {
+        case Some(v) => v + marker.size
+        case None => return ""
+    }
+    var j = i
+    let arr = text.toArray()
+    while (j < arr.size && (arr[j] == UInt8(58) || arr[j] == UInt8(32))) {
+        j = j + 1
+    }
+    if (j >= arr.size || arr[j] != UInt8(34)) {
+        return ""
+    }
+    j = j + 1
+    var end = j
+    while (end < arr.size && arr[end] != UInt8(34)) {
+        end = end + 1
+    }
+    return String.fromUtf8(arr[j..end])
+}
+
+func waitPort2(server: Server): UInt16 {
+    let deadline = nowMillis() + 5000
+    while (nowMillis() < deadline) {
+        let p = server.port
+        if (p != UInt16(0)) {
+            return p
+        }
+        sleep(Duration.millisecond * 10)
+    }
+    return server.port
+}
+
+@Test
+func full_stack_acp_question_flows_through_uhp_server(): Unit {
+    let opts = AcpOptions(fakeAgentPath(), cwd: "/tmp", timeoutSeconds: 120,
+        permissionTimeoutSeconds: 120)
+    let driver = AcpDriver(opts)
+    let harness = ConfiguredHarness("chrn_acp", "ACP agent", "acp", "acp-agent", driver)
+    let engine = Engine([harness])
+    let tokens = HashMap<String, String>()
+    tokens["t"] = "p"
+    let uhp = UhpHttpServer(engine, Authenticator(tokens))
+    let server = ServerBuilder()
+        .addr("127.0.0.1")
+        .port(0)
+        .distributor(uhp.distributor())
+        .build()
+    let s = server
+    spawn {
+        s.serve()
+    }
+    let url = "http://127.0.0.1:" + waitPort2(server).toString()
+    let first = acpHttpJson(url + "/v1/responses", acpTaskBody("perm please"))
+    @Expect(jsonStr(first, "status"), "incomplete")
+    let firstId = jsonStr(first, "id")
+    let requestId = jsonStr(first, "input_request_id")
+    // input_request item 里是 "id":"inreq_..."，这里用更稳的方式：直接找 inreq_ 前缀串
+    var rid = requestId
+    if (!rid.startsWith("inreq_")) {
+        let idx = match (first.indexOf("inreq_")) {
+            case Some(v) => v
+            case None => 0
+        }
+        if (idx > 0) {
+            var end = idx
+            let arr = first.toArray()
+            while (end < arr.size && arr[end] != UInt8(34)) {
+                end = end + 1
+            }
+            rid = String.fromUtf8(arr[idx..end])
+        }
+    }
+    @Expect(rid.startsWith("inreq_"), true)
+    let second = acpHttpJson(url + "/v1/responses", acpAnswerBody(firstId, rid, "once"))
+    @Expect(jsonStr(second, "status"), "completed")
+    @Expect(second.contains("perm answered: once"), true)
+    server.close()
 }

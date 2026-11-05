@@ -1,20 +1,26 @@
 // ACP（Agent Client Protocol）的 UHP HarnessDriver 适配器。
 //
 // 翻译关系（一对一，不做语义加工）：
-//   UHP TurnContext.input          -> ACP session/prompt（内容块 = 一行文本）
-//   ACP agent_message_chunk        -> TurnSink.textDelta
-//   ACP agent_thought_chunk        -> TurnSink.reasoningDelta
+//   UHP TurnContext.input            -> ACP session/prompt（内容块 = 一行文本）
+//   ACP agent_message_chunk          -> TurnSink.textDelta
+//   ACP agent_thought_chunk          -> TurnSink.reasoningDelta
 //   ACP tool_call / tool_call_update -> TurnSink.toolCall / toolResult
-//   ACP stopReason                 -> UHP TurnOutcome（end_turn/cancelled/max_* 等）
-//   UHP CancelToken                -> ACP session/cancel（由监控线程发）
+//   ACP stopReason                   -> UHP TurnOutcome
+//   UHP CancelToken                  -> ACP session/cancel（旁路线程）
+//   ACP session/request_permission   -> UHP 的两轮问答（见下）
 //
-// ACP 的 session/request_permission（Agent 反向请求）暂未映射成 UHP input_request：
-// 那是**同步**回调，而 UHP 的提问要走「本轮结束 + 下一轮续跑」，两者模型不同；
-// 需要的能力已在 acp-cj 里（setOnRequestPermission），留给后续按两轮问答实现。
+// 权限请求为什么不能「直接答」：ACP 的 request_permission 是**同步回调**——Agent 在
+// session/prompt 里阻塞等 Client 立刻回应；而 UHP 的提问是「本轮结束为 incomplete，
+// 下一轮用 input_response 续跑」。所以本适配器把 prompt 放到后台线程跑：
+//   回调到达 -> 记下挂起请求 -> 让当前 run 以 Incomplete(input_required) 返回；
+//   下一轮 run 收到答案 -> 写入挂起槽 -> 回调立即返回 selected(optionId) -> Agent 继续；
+//   该轮 run 等后台 prompt 结束，返回最终 stopReason。
 package uhp_acp
 
 import std.collection.{ArrayList, HashMap}
+import std.convert.*
 import std.sync.{AtomicBool, Mutex}
+import std.time.DateTime
 import acp.*
 import acp.types.*
 import acp.transport.*
@@ -29,16 +35,38 @@ public class AcpOptions {
     public let label: String
     public let clientName: String
     public let timeoutSeconds: Int64
+    public let permissionTimeoutSeconds: Int64
 
     public init(command: String, args!: Array<String> = [], cwd!: String = "/tmp",
                 label!: String = "ACP agent", clientName!: String = "uhp-cj",
-                timeoutSeconds!: Int64 = 600) {
+                timeoutSeconds!: Int64 = 600, permissionTimeoutSeconds!: Int64 = 600) {
         this.command = command
         this.args = args
         this.cwd = cwd
         this.label = label
         this.clientName = clientName
         this.timeoutSeconds = timeoutSeconds
+        this.permissionTimeoutSeconds = permissionTimeoutSeconds
+    }
+}
+
+// 一个 UHP 会话对应的一轮执行状态（prompt 在后台线程跑，主线程按事件轮询）
+class TurnState {
+    public let acpSession: String
+    public var sink: Option<TurnSink> = None
+    public var inFlight: Bool = false
+    public var promptDone: Bool = false
+    public var stopReason: String = ""
+    public var promptError: Option<String> = None
+    public var permPending: Bool = false
+    public var permToolCallId: String = ""
+    public var permTitle: String = "Allow this tool call?"
+    public var permOptions: Array<(String, String)> = []
+    public var permAnswer: Option<String> = None
+    public var permAsked: Bool = false
+
+    public init(acpSession: String) {
+        this.acpSession = acpSession
     }
 }
 
@@ -50,7 +78,7 @@ public class AcpDriver <: HarnessDriver {
     private var currentSession: String = ""
     private let callIds = HashMap<String, String>()
     private let sessions: HashMap<String, String> = HashMap<String, String>()
-    private var seq: Int64 = 0
+    private let turns: HashMap<String, TurnState> = HashMap<String, TurnState>()
 
     public init(opts: AcpOptions) {
         this.opts = opts
@@ -74,7 +102,7 @@ public class AcpDriver <: HarnessDriver {
     }
 
     public func capabilities(): HarnessCapabilities {
-        return HarnessCapabilities(false, false)
+        return HarnessCapabilities(false, true)
     }
 
     public func run(ctx: TurnContext, sink: TurnSink, cancel: CancelToken): TurnOutcome {
@@ -91,40 +119,94 @@ public class AcpDriver <: HarnessDriver {
             case Some(c) => c
             case None => return TurnOutcome.Failed("harness_error", "ACP agent not available")
         }
-        let sessionId = match (this.ensureSession(client, ctx.sessionId)) {
+        let acpSession = match (this.ensureSession(client, ctx.sessionId)) {
             case Some(s) => s
             case None => return TurnOutcome.Failed("harness_error", "ACP session/new failed")
         }
-        synchronized(this.lock) {
-            this.currentSink = Some(sink)
-            this.currentSession = sessionId
-        }
-        // 取消监控：ACP 的 prompt 是阻塞调用，取消只能从旁路线程发 session/cancel
-        let done = AtomicBool(false)
-        let monitor = spawn {
-            while (!done.load()) {
-                if (cancel.isCancelled()) {
-                    client.cancel(sessionId)
-                    break
+        let state = this.turnState(ctx.sessionId, acpSession)
+        if (ctx.answers.size > 0) {
+            let st = state
+            synchronized(this.lock) {
+                if (st.permPending) {
+                    st.permAnswer = Some(ctx.answers[0])
                 }
-                sleep(Duration.millisecond * 20)
             }
         }
-        let result = client.promptText(sessionId, ctx.input,
-            timeout: Duration.second * this.opts.timeoutSeconds)
-        done.store(true)
+        let resumeOnly = synchronized(this.lock) {
+            state.inFlight
+        }
         synchronized(this.lock) {
-            this.currentSink = None
-            this.currentSession = ""
+            state.sink = Some(sink)
+            this.currentSink = Some(sink)
+            this.currentSession = acpSession
         }
-        let _ = monitor
-        return match (result) {
-            case Result.Ok(resp) => outcomeOf(resp.stopReason)
-            case Result.Err(msg) => TurnOutcome.Failed("harness_error", "ACP prompt failed: " + msg)
+        if (!resumeOnly) {
+            synchronized(this.lock) {
+                state.inFlight = true
+                state.promptDone = false
+                state.stopReason = ""
+                state.promptError = None
+            }
+            let st = state
+            let input = ctx.input
+            let c = client
+            spawn {
+                let res = c.promptText(acpSession, input,
+                    timeout: Duration.second * this.opts.timeoutSeconds)
+                let st2 = st
+                synchronized(this.lock) {
+                    match (res) {
+                        case Result.Ok(resp) =>
+                            st2.stopReason = resp.stopReason
+                        case Result.Err(msg) =>
+                            st2.promptError = Some(msg)
+                    }
+                    st2.promptDone = true
+                    st2.inFlight = false
+                }
+            }
         }
+        let deadline = nowMillis() + this.opts.timeoutSeconds * 1000
+        while (nowMillis() < deadline) {
+            let (done, reason, err) = synchronized(this.lock) {
+                (state.promptDone, state.stopReason, state.promptError)
+            }
+            if (done) {
+                synchronized(this.lock) {
+                    state.sink = None
+                    this.currentSink = None
+                    this.currentSession = ""
+                }
+                match (err) {
+                    case Some(msg) => return TurnOutcome.Failed("harness_error", "ACP prompt failed: " + msg)
+                    case None => return outcomeOf(reason)
+                }
+            }
+            let askable = synchronized(this.lock) {
+                state.permPending && !state.permAsked && state.permAnswer.isNone()
+            }
+            if (askable) {
+                let title = synchronized(this.lock) {
+                    state.permTitle
+                }
+                let options = synchronized(this.lock) {
+                    state.permOptions
+                }
+                let _ = sink.ask("choice", title, options)
+                synchronized(this.lock) {
+                    state.permAsked = true
+                    state.sink = None
+                    this.currentSink = None
+                }
+                return TurnOutcome.Incomplete(IncompleteReason.InputRequired, None)
+            }
+            if (cancel.isCancelled()) {
+                client.cancel(acpSession)
+            }
+            sleep(Duration.millisecond * 10)
+        }
+        return TurnOutcome.Failed("harness_error", "ACP timeout")
     }
-
-    // ---------- 连接与会话 ----------
 
     private func ensureClient(): Option<AcpClient> {
         synchronized(this.lock) {
@@ -135,6 +217,7 @@ public class AcpDriver <: HarnessDriver {
             let transport = SubprocessTransport(this.opts.command, args: this.opts.args)
             let c = AcpClient(transport)
             c.setOnSessionUpdate({ sid, update => this.onUpdate(sid, update) })
+            c.setOnRequestPermission({ req => this.onPermission(req) })
             c.setOnError({ e => eprintln("acp: rpc error: " + e.toString()) })
             let info = Implementation(this.opts.clientName, "0.1.0")
             match (c.connect(info, ClientCapabilities())) {
@@ -168,7 +251,76 @@ public class AcpDriver <: HarnessDriver {
         }
     }
 
-    // ---------- 通知映射 ----------
+    private func turnState(uhpSession: String, acpSession: String): TurnState {
+        synchronized(this.lock) {
+            match (this.turns.get(uhpSession)) {
+                case Some(s) => return s
+                case None =>
+                    let s = TurnState(acpSession)
+                    this.turns[uhpSession] = s
+                    return s
+            }
+        }
+    }
+
+    private func stateByAcpSession(acpSession: String): Option<TurnState> {
+        synchronized(this.lock) {
+            for ((_, st) in this.turns) {
+                if (st.acpSession == acpSession) {
+                    return Some(st)
+                }
+            }
+            return None
+        }
+    }
+
+    private func onPermission(req: RequestPermissionRequest): RequestPermissionResponse {
+        let st = match (this.stateByAcpSession(req.sessionId)) {
+            case Some(s) => s
+            case None => return RequestPermissionResponse(RequestPermissionOutcome.cancelled())
+        }
+        let options = ArrayList<(String, String)>()
+        for (o in req.options) {
+            options.add((o.optionId, o.name))
+        }
+        if (options.size == 0) {
+            return RequestPermissionResponse(RequestPermissionOutcome.cancelled())
+        }
+        let title = match (req.toolCall.title) {
+            case Some(t) => "Allow: " + t + "?"
+            case None => "Allow this tool call?"
+        }
+        synchronized(this.lock) {
+            st.permPending = true
+            st.permToolCallId = req.toolCall.toolCallId
+            st.permTitle = title
+            st.permOptions = options.toArray()
+            st.permAnswer = None
+            st.permAsked = false
+        }
+        let deadline = nowMillis() + this.opts.permissionTimeoutSeconds * 1000
+        while (nowMillis() < deadline) {
+            let ans = synchronized(this.lock) {
+                st.permAnswer
+            }
+            match (ans) {
+                case Some(a) =>
+                    synchronized(this.lock) {
+                        st.permPending = false
+                        st.permAnswer = None
+                        st.permAsked = false
+                    }
+                    return RequestPermissionResponse(RequestPermissionOutcome.selected(a))
+                case None => ()
+            }
+            sleep(Duration.millisecond * 10)
+        }
+        synchronized(this.lock) {
+            st.permPending = false
+            st.permAsked = false
+        }
+        return RequestPermissionResponse(RequestPermissionOutcome.cancelled())
+    }
 
     private func onUpdate(sid: String, update: SessionUpdate) {
         let target: Option<TurnSink> = synchronized(this.lock) {
@@ -260,4 +412,8 @@ func outcomeOf(stopReason: String): TurnOutcome {
         return TurnOutcome.Failed("harness_error", "agent refusal")
     }
     return TurnOutcome.Incomplete(IncompleteReason.Other(stopReason), None)
+}
+
+public func nowMillis(): Int64 {
+    return DateTime.now().toUnixTimeStamp().toMilliseconds()
 }

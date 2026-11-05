@@ -10,8 +10,9 @@ ACP（Agent Client Protocol）的 UHP HarnessDriver 适配器（消费方代码�
 
 | 层 | 证据 |
 |---|---|
-| 行为测试 | 3 条：往返映射（thought/tool_call/message）、stopReason → 终态、取消（session/cancel）；用**真的 ACP 协议**（stdio 子进程 + 本仓假 agent），不依赖模型 |
-| 真实链路 | opencode 2.2.5 的 ACP 模式（opencode acp）+ deepseek-v4.1-flash-free：UHP 任务 completed，输出 ACP-OK |
+| 行为测试 | 4 条：往返映射、stopReason → 终态、取消（session/cancel）、**request_permission → UHP 两轮问答**；用**真的 ACP 协议**（stdio 子进程 + 本仓假 agent），不依赖模型 |
+| 全栈测试 | 1 条：UHP 服务端（Engine + AcpDriver）→ 假 ACP agent，任务以 incomplete+input_request 结束，回答后续跑为 completed |
+| 真实链路 | opencode 2.2.5 的 ACP 模式（opencode acp）+ deepseek-v4.1-flash-free：UHP 任务 completed，输出 ACP-OK（改完 permission 结构后再跑仍通过） |
 
 ## 映射表
 
@@ -29,6 +30,7 @@ ACP（Agent Client Protocol）的 UHP HarnessDriver 适配器（消费方代码�
 | stopReason = max_tokens | TurnOutcome.Incomplete(max_tokens) |
 | stopReason = refusal | TurnOutcome.Failed |
 | CancelToken 被触发 | ACP session/cancel（旁路线程发送） |
+| session/request_permission（同步回调） | TurnSink.ask("choice", 提示, optionId/name) → 本轮 incomplete(input_required)；下一轮答案经挂起槽交回回调 → selected(optionId) |
 
 ## 用法
 
@@ -51,9 +53,8 @@ bash scripts/real-smoke.sh                   # opencode acp 真实链路（需�
 
 ## 已知限制（如实）
 
-1. **session/request_permission 未映射成 UHP input_request**：ACP 的权限请求是**同步回调**
-   （Agent 在 prompt 里等 Client 立刻回应），而 UHP 的提问是「本轮结束 + 下一轮续跑」；
-   两者模型不同，直接接会死锁。需要把 driver 改成「先结束本轮、下一轮带答案再回 ACP」——
-   与 opencode 适配器里的 permission 两轮问答是同一套做法，留作后续。
+1. permission 已接：把 **prompt 放到后台线程**跑，回调阻塞等下一轮的答案；当前轮以
+   incomplete+input_request 结束，下一轮把答案写入挂起槽，回调返回 selected(optionId)，
+   Agent 继续，该轮 run 等后台 prompt 结束再返回终态。
 2. **文件/图片内容块未映射**：UHP 的 files_input 还没进 prompt，ACP 的 image/resource 块被忽略。
 3. 会话级 config/mode（model 选择）未暴露成 UHP 侧参数：由 ACP agent 自己的配置决定。
