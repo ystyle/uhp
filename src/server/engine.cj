@@ -165,6 +165,8 @@ public class Engine {
     // 环境（Environments 章）：每个环境一个真实目录（mount），build 后只读
     private let envs: HashMap<String, EnvRecord> = HashMap<String, EnvRecord>()
     private let envBase: String = envBaseDir()
+    // 包检查的 registry 查询接缝：宿主注入（None = 本服务端不提供该可选端点）
+    private var packageChecker: Option<(String, String) -> Option<PackageCheckResult>> = None
     // 记忆（Memories 章）：树节点 / 记录 / 双向链接
     private let memories: HashMap<String, MemoryNodeRec> = HashMap<String, MemoryNodeRec>()
     private let memRecords: HashMap<String, MemoryRecordRec> = HashMap<String, MemoryRecordRec>()
@@ -179,7 +181,8 @@ public class Engine {
     public init(harnesses: Array<ConfiguredHarness>, versions!: Array<String> = ["2026-10-19"],
                 cls!: ConformanceClass = ConformanceClass.Core,
                 driverFactory!: Option<(String) -> HarnessDriver> = None,
-                supportedBases!: Option<Array<String>> = None) {
+                supportedBases!: Option<Array<String>> = None,
+                packageChecker!: Option<(String, String) -> Option<PackageCheckResult>> = None) {
         let bases = ArrayList<String>()
         for (h in harnesses) {
             this.harnesses[h.id] = h
@@ -192,6 +195,7 @@ public class Engine {
             bases.add(h.base)
         }
         this.factory = driverFactory
+        this.packageChecker = packageChecker
         if (let Some(bs) <- supportedBases) {
             this.supportedBases = bs
         } else {
@@ -1516,6 +1520,17 @@ public class Engine {
             let rec = EnvRecord(id, name, slug, description, entry, mount)
             this.envs[id] = rec
             return rec
+        }
+    }
+
+    // 包检查：没有注入查询接缝就不提供该端点（规范里它是可选的）
+    public func checkEnvironmentPackage(manager: String, spec: String): String {
+        match (this.packageChecker) {
+            case Some(check) => match (check(manager, spec)) {
+                case Some(r) => return envPackageCheckJson(manager, spec, r.exists, r.latest)
+                case None => throw EngineError("environment_invalid", UInt16(400), param: Some("manager"))
+            }
+            case None => throw EngineError("not_found", UInt16(404))
         }
     }
 

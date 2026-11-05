@@ -400,6 +400,15 @@ public class UhpHttpServer {
             }
         }
 
+        // 包检查（可选端点）：registry 查询由宿主注入，服务端如实转述
+        if (path == "/v1/environments/packages/check" && method == "GET") {
+            let manager = queryString(ctx, "manager") ?? ""
+            let spec = queryString(ctx, "spec") ?? ""
+            this.writeJson(ctx, UInt16(200), this.engine.checkEnvironmentPackage(manager, spec),
+                version: Some(usedVersion))
+            return
+        }
+
         // ---------- 环境（Environments） ----------
         if (path == "/v1/environments" && method == "GET") {
             let out = ByteBuffer()

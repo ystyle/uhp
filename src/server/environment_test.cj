@@ -126,3 +126,45 @@ func environment_delete_removes_it(): Unit {
     }
     @Expect(code, "environment_not_found")
 }
+
+
+func lookupIn(manager: String, spec: String): Option<PackageCheckResult> {
+    if (manager != "pip") {
+        return None
+    }
+    if (spec == "pip") {
+        return Some(PackageCheckResult(true, Some("26.0.0")))
+    }
+    return Some(PackageCheckResult(false, None))
+}
+
+@Test
+func package_check_uses_injected_registry(): Unit {
+    let h = ScriptedHarness([ScriptStep.Text("ok")], TurnOutcome.Completed(None))
+    let e = Engine([ConfiguredHarness("chrn_1", "n", "scripted", "m", h)],
+        cls: ConformanceClass.Full, packageChecker: Some({ m: String, s: String => lookupIn(m, s) }))
+    let pip = e.checkEnvironmentPackage("pip", "pip")
+    @Expect(pip.contains("\"exists\":true"), true)
+    @Expect(pip.contains("26.0.0"), true)
+    let unknown = e.checkEnvironmentPackage("pip", "uhp-conformance-no-such-package")
+    @Expect(unknown.contains("\"exists\":false"), true)
+    var code = ""
+    try {
+        let _ = e.checkEnvironmentPackage("cargo", "serde")
+    } catch (err: EngineError) {
+        code = err.code
+    }
+    @Expect(code, "environment_invalid")
+}
+
+@Test
+func package_check_absent_without_registry(): Unit {
+    let (e, _) = engineWithEnv()
+    var code = ""
+    try {
+        let _ = e.checkEnvironmentPackage("pip", "pip")
+    } catch (err: EngineError) {
+        code = err.code
+    }
+    @Expect(code, "not_found")
+}

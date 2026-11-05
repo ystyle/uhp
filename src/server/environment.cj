@@ -12,6 +12,17 @@ import std.io.*
 import stdx.encoding.json.stream.*
 import uhp.types.generated.*
 
+// 一次包检查的结果：registry 查询是宿主的事（服务端只负责如实转述，绝不编造版本）
+public class PackageCheckResult {
+    public let exists: Bool
+    public let latest: Option<String>
+
+    public init(exists: Bool, latest: Option<String>) {
+        this.exists = exists
+        this.latest = latest
+    }
+}
+
 public class EnvBuild {
     public let version: Int64
     public var status: String = "ready"
@@ -324,6 +335,26 @@ public func envVersionJson(version: Int64): String {
     let w = JsonWriter(out)
     w.startObject()
     w.writeName("version").writeValue(version)
+    w.endObject()
+    w.flush()
+    return String.fromUtf8(out.bytes())
+}
+
+// EnvironmentPackageCheck 应答
+public func envPackageCheckJson(manager: String, spec: String, exists: Bool,
+                                latest: Option<String>): String {
+    let out = ByteBuffer()
+    let w = JsonWriter(out)
+    w.startObject()
+    w.writeName("object").writeValue("environment.package")
+    w.writeName("manager").writeValue(manager)
+    w.writeName("name").writeValue(spec)
+    w.writeName("spec").writeValue(spec)
+    w.writeName("exists").writeValue(exists)
+    match (latest) {
+        case Some(v) => w.writeName("latest").writeValue(v)
+        case None => ()
+    }
     w.endObject()
     w.flush()
     return String.fromUtf8(out.bytes())

@@ -281,6 +281,7 @@ main(): Int64 {
     // Extended 类：files_input / files_output / session_listing 由引擎按类自动打开
     // Full 类：再打开 harness_management（本服务端支持一个 base：scripted）
     let engine = Engine([harness], cls: ConformanceClass.Full,
+        packageChecker: Some({ manager: String, spec: String => localRegistryLookup(manager, spec) }),
         driverFactory: Some({ b: String => SutHarness() }),
         supportedBases: Some(["scripted"]))
     let tokens = HashMap<String, String>()
@@ -297,6 +298,18 @@ main(): Int64 {
     println("LISTENING " + server.port.toString())
     server.serve()
     return 0
+}
+
+// 一致性 SUT 的本地 registry：只回答 pip 生态，pip 已知、其它名字如实说不存在。
+// 这是宿主侧实现（真实部署里换成 PyPI/私有源），SDK 只负责把结果原样转述。
+func localRegistryLookup(manager: String, spec: String): Option<PackageCheckResult> {
+    if (manager != "pip") {
+        return None
+    }
+    if (spec == "pip") {
+        return Some(PackageCheckResult(true, Some("26.0.0")))
+    }
+    return Some(PackageCheckResult(false, None))
 }
 
 func parsePort(args: Array<String>): UInt16 {
