@@ -35,9 +35,11 @@ UHP 定义「产品如何通过 HTTP 驱动一个完整的 agent harness」：�
 | 提问 / step 预算（T-13/T-14/T-12） | ✅ **3/3** | `ask_user` → incomplete/input_required、答案续跑、secret 不外泄、预算截断必 incomplete |
 | environments（EN 组） | ✅ **9/9** | 对象/文件/build/版本回滚/harness 挂载/只读挂载/包检查（registry 接缝）全过 |
 | memories（ME 组） | ✅ **13/13** | 树/记录/修订历史/遗忘擦除/召回/prime/实体图/时序事实全过 |
+| 真实 harness（消费方仓） | ✅ opencode 2.x | [../uhp-opencode](../uhp-opencode)：4 条测试 + `real-smoke.sh` 真实跑通（shell 工具调用 → UHP output items） |
 
 > 现在能用：`UhpClient` 对接任意 UHP 服务端；`UhpHttpServer` + `HarnessDriver` 起一个**通过官方一致性套件三档全部检查**的 UHP 服务端（harness 增删改、技能包、文件上传/产物下载、会话列举/删除/分享、提问与预算、环境与记忆、插件校验/派生/导出/MCP 调用）。
-> 还没有：仓内文档四件套（design/support/protocol-notes/spec-conflicts）与 opencode 2.x 真 harness 适配。
+> 真实 harness：opencode 2.x 的适配器在**另一个消费方仓** [../uhp-opencode](../uhp-opencode)（含 4 条测试与真实链路冒烟脚本；按本仓边界，适配器不放进 SDK）。
+> 还没有：ACP 通用 driver（一次覆盖 dsh / pi / claude-code），以及 opencode 的 permission/form → `input_requests` 映射。
 
 ## 目录
 
