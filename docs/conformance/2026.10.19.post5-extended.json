@@ -3,7 +3,7 @@
   "protocol_version": "2026-10-19",
   "suite_protocol_version": "2026-10-19",
   "suite_version": "2026.10.19.post5",
-  "generated_at": "2026-11-05T07:40:01Z",
+  "generated_at": "2026-11-05T09:25:31Z",
   "target": "http://127.0.0.1:8471",
   "target_label": "",
   "implementation": {
@@ -36,7 +36,7 @@
       "class": "core",
       "spec": "protocol/versions/2026-10-19/lifecycle.md#2-capability-discovery",
       "outcome": "pass",
-      "detail": "conformance_class=extended versions=['2026-10-19']"
+      "detail": "conformance_class=full versions=['2026-10-19']"
     },
     {
       "id": "D-02",
@@ -68,7 +68,7 @@
       "class": "core",
       "spec": "protocol/versions/2026-10-19/lifecycle.md#2-capability-discovery",
       "outcome": "pass",
-      "detail": "class=extended"
+      "detail": "class=full"
     },
     {
       "id": "V-01",
@@ -204,7 +204,7 @@
       "class": "core",
       "spec": "protocol/versions/2026-10-19/lifecycle.md#4-session-lifecycle",
       "outcome": "pass",
-      "detail": "session_id=hsess655262446674109302616537411649294310964"
+      "detail": "session_id=hsess127571958390841032005622641670136795995"
     },
     {
       "id": "T-05",
@@ -316,7 +316,7 @@
       "class": "core",
       "spec": "protocol/versions/2026-10-19/sessions.md#1-continuing-a-session",
       "outcome": "pass",
-      "detail": "session hsess655262446674109302616537411649294310964 extended"
+      "detail": "session hsess127571958390841032005622641670136795995 extended"
     },
     {
       "id": "C-02",
