@@ -93,7 +93,10 @@ main(): Int64 {
     let port = parsePort(getCommandLine())
     let harness = ConfiguredHarness("chrn_sut", "SUT harness", "scripted", "scripted-model", SutHarness())
     // Extended 类：files_input / files_output / session_listing 由引擎按类自动打开
-    let engine = Engine([harness], cls: ConformanceClass.Extended)
+    // Full 类：再打开 harness_management（本服务端支持一个 base：scripted）
+    let engine = Engine([harness], cls: ConformanceClass.Full,
+        driverFactory: Some({ b: String => SutHarness() }),
+        supportedBases: Some(["scripted"]))
     let tokens = HashMap<String, String>()
     tokens["dev-token"] = "conformance"
     let uhp = UhpHttpServer(engine, Authenticator(tokens))

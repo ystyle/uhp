@@ -133,18 +133,37 @@ public class Engine {
     private let sessionOwners: HashMap<String, String> = HashMap<String, String>()
     // 会话元数据（列表/检查/turns 用）与产物存储
     private let records: HashMap<String, SessionRecord> = HashMap<String, SessionRecord>()
+    // harness 管理（Full 类）
+    private let harnessRecords: HashMap<String, HarnessRecord> = HashMap<String, HarnessRecord>()
+    private let idemKeys: HashMap<String, String> = HashMap<String, String>()
+    private let idemBodies: HashMap<String, String> = HashMap<String, String>()
+    private var factory: Option<(String) -> HarnessDriver> = None
+    private let supportedBases: Array<String>
     private let files: HashMap<String, StoredFile> = HashMap<String, StoredFile>()
     private let versions: Array<String>
     private let cls: ConformanceClass
     private let capabilitiesValue: Capabilities
 
     public init(harnesses: Array<ConfiguredHarness>, versions!: Array<String> = ["2026-10-19"],
-                cls!: ConformanceClass = ConformanceClass.Core) {
+                cls!: ConformanceClass = ConformanceClass.Core,
+                driverFactory!: Option<(String) -> HarnessDriver> = None,
+                supportedBases!: Option<Array<String>> = None) {
+        let bases = ArrayList<String>()
         for (h in harnesses) {
             this.harnesses[h.id] = h
             if (this.defaultHarness == "") {
                 this.defaultHarness = h.id
             }
+            let rec = HarnessRecord(h.id, h.name, h.base)
+            rec.defaultModel = Some(h.defaultModel)
+            this.harnessRecords[h.id] = rec
+            bases.add(h.base)
+        }
+        this.factory = driverFactory
+        if (let Some(bs) <- supportedBases) {
+            this.supportedBases = bs
+        } else {
+            this.supportedBases = bases.toArray()
         }
         this.versions = versions
         this.cls = cls
@@ -156,10 +175,17 @@ public class Engine {
         // Extended 才要求文件与会话列举；能力与类必须自洽（Lifecycle §2）
         match (cls) {
             case ConformanceClass.Core => ()
-            case _ =>
+            case ConformanceClass.Extended =>
                 caps.filesInput = true
                 caps.filesOutput = true
                 caps.sessionListing = true
+            case ConformanceClass.Full =>
+                caps.filesInput = true
+                caps.filesOutput = true
+                caps.sessionListing = true
+                caps.harnessManagement = true
+                // 创建 harness 的幂等键（F-10）：key 保留在内存里，同 key 返回第一次的结果
+                caps.harnessIdempotency = true
         }
         this.capabilitiesValue = caps
     }
@@ -469,6 +495,158 @@ public class Engine {
                     return true
                 case None => throw EngineError("response_not_found", UInt16(404))
             }
+        }
+    }
+
+    // ---------- harness 管理（Full） ----------
+
+    public func supportedBaseList(): Array<String> {
+        return this.supportedBases
+    }
+
+    public func createHarness(p: Principal, body: String, idemKey: Option<String>): HarnessRecord {
+        synchronized(this.lock) {
+            // 幂等键：同 key 返回第一次创建的那个 harness（F-10）
+            match (idemKey) {
+                case Some(k) => match (this.idemKeys.get(k)) {
+                    case Some(existing) =>
+                        // 同一 key 携带不同请求 -> 409（规范 §5.1：不能拿第一次的答案应付另一次请求）
+                        let prevBody = this.idemBodies.get(k) ?? ""
+                        if (prevBody != body) {
+                            throw EngineError("idempotency_key_reused", UInt16(409))
+                        }
+                        // key 指向的 harness 已被删除：按第一次的语义新建（规范 §5.1）
+                        match (this.harnessRecords.get(existing)) {
+                            case Some(rec) => return rec
+                            case None => ()
+                        }
+                    case None => ()
+                }
+                case None => ()
+            }
+            let id = "chrn_" + this.idSource.harness().replace("chrn_", "")
+            let rec = parseHarnessCreate(JsonReader(ByteBuffer(body.toArray())), id)
+            if (rec.base.size == 0) {
+                throw EngineError("invalid_input", UInt16(422), param: Some("base"))
+            }
+            if (!this.supportedBases.contains(rec.base)) {
+                throw EngineError("unsupported_base", UInt16(422), param: Some("base"),
+                    reason: Some(quoteJoin(this.supportedBases)))
+            }
+            if (rec.name.size == 0) {
+                // 对象 required 含 name，写体不强制：合成一个稳定名字
+                rec.name = rec.base + " harness"
+            }
+            this.harnessRecords[id] = rec
+            this.harnesses[id] = ConfiguredHarness(id, rec.name, rec.base,
+                match (rec.defaultModel) { case Some(m) => m; case None => "scripted-model" },
+                match (this.factory) {
+                    case Some(f) => f(rec.base)
+                    case None => match (this.harnesses.get(this.defaultHarness)) {
+                        case Some(h) => h.driver
+                        case None => throw EngineError("unsupported_base", UInt16(422))
+                    }
+                })
+            match (idemKey) {
+                case Some(k) =>
+                    this.idemKeys[k] = id
+                    this.idemBodies[k] = body
+                case None => ()
+            }
+            return rec
+        }
+    }
+
+    public func updateHarness(p: Principal, id: String, body: String): HarnessRecord {
+        synchronized(this.lock) {
+            let old = match (this.harnessRecords.get(id)) {
+                case Some(r) => r
+                case None => throw EngineError("harness_not_found", UInt16(404))
+            }
+            let parsed = parseHarnessCreate(JsonReader(ByteBuffer(body.toArray())), id)
+            // base 不可改：PUT 是整替换但 base 仍然 REQUIRED，且必须与现值一致
+            if (parsed.base != old.base) {
+                throw EngineError("invalid_input", UInt16(422), param: Some("base"))
+            }
+            old.name = if (parsed.name.size == 0) { old.name } else { parsed.name }
+            old.defaultModel = parsed.defaultModel
+            old.systemPrompt = parsed.systemPrompt
+            old.mcpServersJson = parsed.mcpServersJson
+            old.skills = parsed.skills
+            old.disabledTools = parsed.disabledTools
+            old.maxStep = parsed.maxStep
+            old.timeoutSeconds = parsed.timeoutSeconds
+            match (this.harnesses.get(id)) {
+                case Some(h) =>
+                    this.harnesses[id] = ConfiguredHarness(id, old.name, old.base,
+                        match (old.defaultModel) { case Some(m) => m; case None => h.defaultModel },
+                        h.driver)
+                case None => ()
+            }
+            return old
+        }
+    }
+
+    // 删除 harness：本服务端报 harness_retirement=false，所以**保留**它的会话（F-09）。
+    public func deleteHarness(p: Principal, id: String): String {
+        synchronized(this.lock) {
+            if (!this.harnessRecords.contains(id)) {
+                throw EngineError("harness_not_found", UInt16(404))
+            }
+            this.harnessRecords.remove(id)
+            this.harnesses.remove(id)
+            return "{\"id\":\"" + id + "\",\"deleted\":true,\"sessions\":\"kept\"}"
+        }
+    }
+
+    public func harnessRecord(id: String): HarnessRecord {
+        synchronized(this.lock) {
+            return match (this.harnessRecords.get(id)) {
+                case Some(r) => r
+                case None => throw EngineError("harness_not_found", UInt16(404))
+            }
+        }
+    }
+
+    public func harnessRecordList(): Array<HarnessRecord> {
+        synchronized(this.lock) {
+            let out = ArrayList<HarnessRecord>()
+            for ((_, r) in this.harnessRecords) {
+                out.add(r)
+            }
+            return out.toArray()
+        }
+    }
+
+    public func skillFiles(id: String, skillName: String): SkillRecord {
+        synchronized(this.lock) {
+            let rec = this.harnessRecord(id)
+            return match (rec.skill(skillName)) {
+                case Some(s) => s
+                case None => throw EngineError("file_not_found", UInt16(404))
+            }
+        }
+    }
+
+    // 删除会话：会话、响应、产物一并不可达（Sessions §6）
+    public func deleteSession(p: Principal, sessionId: String): Unit {
+        synchronized(this.lock) {
+            let rec = this.recordLocked(p, sessionId)
+            for (rid in rec.responseIds) {
+                this.stored.remove(rid)
+            }
+            let toRemove = ArrayList<String>()
+            for ((fid, f) in this.files) {
+                if (f.sessionId == sessionId) {
+                    toRemove.add(fid)
+                }
+            }
+            for (fid in toRemove) {
+                this.files.remove(fid)
+            }
+            this.records.remove(sessionId)
+            this.sessions.remove(sessionId)
+            this.sessionOwners.remove(sessionId)
         }
     }
 

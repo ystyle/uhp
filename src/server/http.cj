@@ -60,7 +60,14 @@ public class UhpHttpServer {
         try {
             this.route(ctx)
         } catch (e: EngineError) {
-            this.writeError(ctx, e.httpStatus, e.code, e.param)
+            let detail = match (e.code) {
+                case "unsupported_base" => match (e.reason) {
+                    case Some(r) => "{\"supported\":[" + r + "]}"
+                    case None => ""
+                }
+                case _ => ""
+            }
+            this.writeErrorDetail(ctx, e.httpStatus, e.code, e.param, detail)
         } catch (e: JsonProtocolException) {
             this.writeError(ctx, UInt16(400), "invalid_input", None)
         } catch (e: Exception) {
@@ -105,9 +112,26 @@ public class UhpHttpServer {
 
         let seg = splitPath(path)
         if (method == "GET" && path == "/v1/harnesses") {
-            let list = HarnessList()
-            list.harnesses = this.engine.listHarnesses()
-            this.writeJson(ctx, UInt16(200), jsonOf(list), version: Some(usedVersion))
+            let out = ByteBuffer()
+            let w = JsonWriter(out)
+            w.startObject()
+            w.writeName("harnesses")
+            w.startArray()
+            for (rec in this.engine.harnessRecordList()) {
+                w.jsonValue(harnessJson(rec, rec.base))
+            }
+            w.endArray()
+            w.endObject()
+            w.flush()
+            this.writeJson(ctx, UInt16(200), String.fromUtf8(out.bytes()), version: Some(usedVersion))
+            return
+        }
+        // harness 管理（Full）：create / update / delete
+        if (path == "/v1/harnesses" && method == "POST") {
+            let body = readAllText(ctx.request.body)
+            let idem = ctx.request.headers.getFirst("Idempotency-Key")
+            let rec = this.engine.createHarness(principal, body, idem)
+            this.writeJson(ctx, UInt16(200), harnessJson(rec, rec.base), version: Some(usedVersion))
             return
         }
         if (method == "GET" && path == "/v1/models") {
@@ -122,7 +146,24 @@ public class UhpHttpServer {
         if (seg.size >= 3 && seg[0] == "v1" && seg[1] == "harnesses") {
             let id = seg[2]
             if (seg.size == 3 && method == "GET") {
-                this.writeJson(ctx, UInt16(200), jsonOf(this.engine.getHarness(id)), version: Some(usedVersion))
+                let rec = this.engine.harnessRecord(id)
+                this.writeJson(ctx, UInt16(200), harnessJson(rec, rec.base), version: Some(usedVersion))
+                return
+            }
+            if (seg.size == 3 && method == "PUT") {
+                let body = readAllText(ctx.request.body)
+                let rec = this.engine.updateHarness(principal, id, body)
+                this.writeJson(ctx, UInt16(200), harnessJson(rec, rec.base), version: Some(usedVersion))
+                return
+            }
+            if (seg.size == 3 && method == "DELETE") {
+                this.writeJson(ctx, UInt16(200), this.engine.deleteHarness(principal, id),
+                    version: Some(usedVersion))
+                return
+            }
+            if (seg.size == 6 && seg[3] == "skills" && seg[5] == "files" && method == "GET") {
+                let skill = this.engine.skillFiles(id, seg[4])
+                this.writeJson(ctx, UInt16(200), skillFilesJson(skill), version: Some(usedVersion))
                 return
             }
             if (seg.size == 4 && seg[3] == "models" && method == "GET") {
@@ -208,6 +249,12 @@ public class UhpHttpServer {
                 this.writeError(ctx, UInt16(501), "preview_unavailable", None)
                 return
             }
+        }
+        if (seg.size == 3 && seg[0] == "v1" && seg[1] == "sessions" && method == "DELETE") {
+            this.engine.deleteSession(principal, seg[2])
+            this.writeJson(ctx, UInt16(200), "{\"id\":\"" + seg[2] + "\",\"deleted\":true}",
+                version: Some(usedVersion))
+            return
         }
         if (seg.size == 4 && seg[0] == "v1" && seg[1] == "sessions" && seg[3] == "cancel" && method == "POST") {
             this.engine.cancelSession(principal, seg[2])

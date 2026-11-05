@@ -1,0 +1,911 @@
+{
+  "protocol": "uhp",
+  "protocol_version": "2026-10-19",
+  "suite_protocol_version": "2026-10-19",
+  "suite_version": "2026.10.19.post5",
+  "generated_at": "2026-11-05T07:45:40Z",
+  "target": "http://127.0.0.1:8471",
+  "target_label": "",
+  "implementation": {
+    "name": "uhp-cj",
+    "version": "0.1.0"
+  },
+  "requested_class": "full",
+  "conformant": false,
+  "conformant_with_skips": true,
+  "skipped_not_verified": [
+    "P-01",
+    "P-02",
+    "P-03",
+    "P-04",
+    "P-05",
+    "P-06",
+    "P-07",
+    "P-08",
+    "P-09",
+    "P-11",
+    "P-10",
+    "T-12",
+    "T-13",
+    "T-14",
+    "R-01",
+    "R-02",
+    "R-03",
+    "R-04",
+    "R-05",
+    "R-06",
+    "R-07",
+    "R-08",
+    "EN-01",
+    "EN-02",
+    "EN-03",
+    "EN-04",
+    "EN-05",
+    "EN-06",
+    "EN-07",
+    "EN-09",
+    "EN-08",
+    "ME-01",
+    "ME-02",
+    "ME-03",
+    "ME-04",
+    "ME-05",
+    "ME-06",
+    "ME-07",
+    "ME-09",
+    "ME-10",
+    "ME-11",
+    "ME-12",
+    "ME-13",
+    "ME-08"
+  ],
+  "coverage": {
+    "complete": true,
+    "required": 104,
+    "reported": 104,
+    "not_run": [],
+    "duplicate_or_unknown": []
+  },
+  "highest_class_passed": "extended",
+  "summary": {
+    "pass": 60,
+    "fail": 0,
+    "skip": 44,
+    "error": 0,
+    "total": 104
+  },
+  "checks": [
+    {
+      "id": "D-01",
+      "title": "Discovery document is served",
+      "class": "core",
+      "spec": "protocol/versions/2026-10-19/lifecycle.md#2-capability-discovery",
+      "outcome": "pass",
+      "detail": "conformance_class=full versions=['2026-10-19']"
+    },
+    {
+      "id": "D-02",
+      "title": "Discovery is served without authentication",
+      "class": "core",
+      "spec": "protocol/versions/2026-10-19/lifecycle.md#2-capability-discovery",
+      "outcome": "pass",
+      "detail": ""
+    },
+    {
+      "id": "D-03",
+      "title": "Discovery document matches the schema",
+      "class": "core",
+      "spec": "protocol/versions/2026-10-19/schema.md",
+      "outcome": "pass",
+      "detail": ""
+    },
+    {
+      "id": "D-04",
+      "title": "default_version is one of versions",
+      "class": "core",
+      "spec": "protocol/versions/2026-10-19/lifecycle.md#2-capability-discovery",
+      "outcome": "pass",
+      "detail": ""
+    },
+    {
+      "id": "D-05",
+      "title": "conformance_class agrees with capabilities",
+      "class": "core",
+      "spec": "protocol/versions/2026-10-19/lifecycle.md#2-capability-discovery",
+      "outcome": "pass",
+      "detail": "class=full"
+    },
+    {
+      "id": "V-01",
+      "title": "UHP-Version header on every response",
+      "class": "core",
+      "spec": "protocol/versions/2026-10-19/lifecycle.md#1-version-negotiation",
+      "outcome": "pass",
+      "detail": "UHP-Version: 2026-10-19"
+    },
+    {
+      "id": "V-02",
+      "title": "A supported version is honoured",
+      "class": "core",
+      "spec": "protocol/versions/2026-10-19/lifecycle.md#1-version-negotiation",
+      "outcome": "pass",
+      "detail": ""
+    },
+    {
+      "id": "V-03",
+      "title": "An unsupported version is refused, not silently substituted",
+      "class": "core",
+      "spec": "protocol/versions/2026-10-19/lifecycle.md#1-version-negotiation",
+      "outcome": "pass",
+      "detail": "supported=['2026-10-19']"
+    },
+    {
+      "id": "A-01",
+      "title": "Authenticated endpoints reject an absent credential",
+      "class": "core",
+      "spec": "protocol/versions/2026-10-19/architecture.md#5-authentication",
+      "outcome": "pass",
+      "detail": ""
+    },
+    {
+      "id": "A-02",
+      "title": "Authenticated endpoints reject an invalid credential",
+      "class": "core",
+      "spec": "protocol/versions/2026-10-19/architecture.md#5-authentication",
+      "outcome": "pass",
+      "detail": ""
+    },
+    {
+      "id": "E-01",
+      "title": "Errors use the structured envelope",
+      "class": "core",
+      "spec": "protocol/versions/2026-10-19/errors.md#1-the-error-envelope",
+      "outcome": "pass",
+      "detail": "code=harness_not_found"
+    },
+    {
+      "id": "E-02",
+      "title": "Unknown harness reports harness_not_found",
+      "class": "core",
+      "spec": "protocol/versions/2026-10-19/errors.md#31-request-and-routing",
+      "outcome": "pass",
+      "detail": ""
+    },
+    {
+      "id": "E-03",
+      "title": "Unknown response reports response_not_found",
+      "class": "core",
+      "spec": "protocol/versions/2026-10-19/errors.md#31-request-and-routing",
+      "outcome": "pass",
+      "detail": ""
+    },
+    {
+      "id": "E-04",
+      "title": "Error messages carry no stack traces",
+      "class": "core",
+      "spec": "protocol/versions/2026-10-19/errors.md#1-the-error-envelope",
+      "outcome": "pass",
+      "detail": ""
+    },
+    {
+      "id": "H-01",
+      "title": "Harness list is served and well formed",
+      "class": "core",
+      "spec": "protocol/versions/2026-10-19/harnesses.md#1-discovering-harnesses",
+      "outcome": "pass",
+      "detail": "1 harness(es)"
+    },
+    {
+      "id": "H-02",
+      "title": "A harness can be fetched by id",
+      "class": "core",
+      "spec": "protocol/versions/2026-10-19/harnesses.md#1-discovering-harnesses",
+      "outcome": "pass",
+      "detail": ""
+    },
+    {
+      "id": "H-03",
+      "title": "Model catalogue is served and availability is a boolean",
+      "class": "core",
+      "spec": "protocol/versions/2026-10-19/harnesses.md#3-models",
+      "outcome": "pass",
+      "detail": "0/0 models available"
+    },
+    {
+      "id": "H-04",
+      "title": "Per-harness model list is served",
+      "class": "core",
+      "spec": "protocol/versions/2026-10-19/harnesses.md#3-models",
+      "outcome": "pass",
+      "detail": ""
+    },
+    {
+      "id": "T-01",
+      "title": "A non-streaming task returns a valid Response",
+      "class": "core",
+      "spec": "protocol/versions/2026-10-19/tasks.md#3-the-response-object",
+      "outcome": "pass",
+      "detail": "status=completed in 0.8s"
+    },
+    {
+      "id": "T-02",
+      "title": "A finished task is in a terminal state",
+      "class": "core",
+      "spec": "protocol/versions/2026-10-19/lifecycle.md#3-task-lifecycle",
+      "outcome": "pass",
+      "detail": ""
+    },
+    {
+      "id": "T-03",
+      "title": "The response names the model that actually ran",
+      "class": "core",
+      "spec": "protocol/versions/2026-10-19/tasks.md#13-model-selection-and-substitution",
+      "outcome": "pass",
+      "detail": "model=scripted-model"
+    },
+    {
+      "id": "T-04",
+      "title": "The response reports its session",
+      "class": "core",
+      "spec": "protocol/versions/2026-10-19/lifecycle.md#4-session-lifecycle",
+      "outcome": "pass",
+      "detail": "session_id=hsess182180391018718515234500330230588166962"
+    },
+    {
+      "id": "T-05",
+      "title": "usage is an object or explicitly null, never fabricated",
+      "class": "core",
+      "spec": "protocol/versions/2026-10-19/tasks.md#3-the-response-object",
+      "outcome": "pass",
+      "detail": ""
+    },
+    {
+      "id": "T-06",
+      "title": "A stored response can be read back",
+      "class": "core",
+      "spec": "protocol/versions/2026-10-19/tasks.md#4-reading-a-task-back",
+      "outcome": "pass",
+      "detail": ""
+    },
+    {
+      "id": "T-07",
+      "title": "Response ids are prefixed",
+      "class": "core",
+      "spec": "protocol/versions/2026-10-19/architecture.md#3-object-model",
+      "outcome": "pass",
+      "detail": ""
+    },
+    {
+      "id": "T-11",
+      "title": "A background task read while it runs reports in_progress",
+      "class": "core",
+      "spec": "protocol/versions/2026-10-19/lifecycle.md#3-task-lifecycle",
+      "outcome": "pass",
+      "detail": "read back as in_progress"
+    },
+    {
+      "id": "S-01",
+      "title": "A streaming task emits events",
+      "class": "core",
+      "spec": "protocol/versions/2026-10-19/streaming.md#1-opening-a-stream",
+      "outcome": "pass",
+      "detail": "7 events"
+    },
+    {
+      "id": "S-02",
+      "title": "Stream content type is text/event-stream",
+      "class": "core",
+      "spec": "protocol/versions/2026-10-19/streaming.md#1-opening-a-stream",
+      "outcome": "pass",
+      "detail": ""
+    },
+    {
+      "id": "S-03",
+      "title": "Every event validates against the schema",
+      "class": "core",
+      "spec": "protocol/versions/2026-10-19/schema.md",
+      "outcome": "pass",
+      "detail": "7 events valid"
+    },
+    {
+      "id": "S-04",
+      "title": "sequence_number starts at 0 and has no gaps",
+      "class": "core",
+      "spec": "protocol/versions/2026-10-19/streaming.md#3-ordering-guarantees",
+      "outcome": "pass",
+      "detail": ""
+    },
+    {
+      "id": "S-05",
+      "title": "The first event is response.created",
+      "class": "core",
+      "spec": "protocol/versions/2026-10-19/streaming.md#3-ordering-guarantees",
+      "outcome": "pass",
+      "detail": ""
+    },
+    {
+      "id": "S-06",
+      "title": "The stream ends with exactly one terminal event",
+      "class": "core",
+      "spec": "protocol/versions/2026-10-19/streaming.md#4-terminal-events",
+      "outcome": "pass",
+      "detail": "terminal=response.completed"
+    },
+    {
+      "id": "S-07",
+      "title": "The terminal event carries the complete response",
+      "class": "core",
+      "spec": "protocol/versions/2026-10-19/streaming.md#4-terminal-events",
+      "outcome": "pass",
+      "detail": ""
+    },
+    {
+      "id": "S-08",
+      "title": "Streaming and non-streaming agree on the result shape",
+      "class": "core",
+      "spec": "protocol/versions/2026-10-19/streaming.md#6-non-streaming",
+      "outcome": "pass",
+      "detail": ""
+    },
+    {
+      "id": "S-09",
+      "title": "The stream is progressive, not buffered to the end",
+      "class": "core",
+      "spec": "protocol/versions/2026-10-19/streaming.md#1-opening-a-stream",
+      "outcome": "pass",
+      "detail": "events spread over 0.8s"
+    },
+    {
+      "id": "C-01",
+      "title": "A task can continue a session",
+      "class": "core",
+      "spec": "protocol/versions/2026-10-19/sessions.md#1-continuing-a-session",
+      "outcome": "pass",
+      "detail": "session hsess182180391018718515234500330230588166962 extended"
+    },
+    {
+      "id": "C-02",
+      "title": "Cancelling a terminal task succeeds and changes nothing",
+      "class": "core",
+      "spec": "protocol/versions/2026-10-19/sessions.md#4-cancelling",
+      "outcome": "pass",
+      "detail": ""
+    },
+    {
+      "id": "C-03",
+      "title": "A running task can be cancelled and ends non-running",
+      "class": "core",
+      "spec": "protocol/versions/2026-10-19/sessions.md#4-cancelling",
+      "outcome": "pass",
+      "detail": "final status=completed"
+    },
+    {
+      "id": "X-01",
+      "title": "Sessions can be listed",
+      "class": "extended",
+      "spec": "protocol/versions/2026-10-19/sessions.md#2-listing-sessions",
+      "outcome": "pass",
+      "detail": "4 session(s)"
+    },
+    {
+      "id": "X-02",
+      "title": "Session listing reports the end of pagination explicitly",
+      "class": "extended",
+      "spec": "protocol/versions/2026-10-19/sessions.md#2-listing-sessions",
+      "outcome": "pass",
+      "detail": ""
+    },
+    {
+      "id": "X-03",
+      "title": "A session can be inspected",
+      "class": "extended",
+      "spec": "protocol/versions/2026-10-19/sessions.md#3-inspecting-a-session",
+      "outcome": "pass",
+      "detail": ""
+    },
+    {
+      "id": "X-04",
+      "title": "A session's turn history is available, in the specified shape",
+      "class": "extended",
+      "spec": "protocol/versions/2026-10-19/sessions.md#3-inspecting-a-session",
+      "outcome": "pass",
+      "detail": ""
+    },
+    {
+      "id": "X-05",
+      "title": "A file can be sent as task input",
+      "class": "extended",
+      "spec": "protocol/versions/2026-10-19/files.md#1-sending-files-in",
+      "outcome": "pass",
+      "detail": "accepted (the harness did not echo the token, which the protocol does not require)"
+    },
+    {
+      "id": "X-06",
+      "title": "Artifacts of a session can be listed",
+      "class": "extended",
+      "spec": "protocol/versions/2026-10-19/files.md#22-by-listing-the-session",
+      "outcome": "pass",
+      "detail": "1 artifact(s)"
+    },
+    {
+      "id": "X-07",
+      "title": "An artifact downloads as raw bytes with nosniff",
+      "class": "extended",
+      "spec": "protocol/versions/2026-10-19/files.md#3-downloading",
+      "outcome": "pass",
+      "detail": "11 bytes, text/plain; charset=utf-8"
+    },
+    {
+      "id": "X-08",
+      "title": "Artifact ids do not traverse outside their container",
+      "class": "extended",
+      "spec": "protocol/versions/2026-10-19/files.md#5-retention-and-scope",
+      "outcome": "pass",
+      "detail": "traversal probes refused"
+    },
+    {
+      "id": "X-09",
+      "title": "A file uploaded through POST /v1/files is accepted and can be sent as task input",
+      "class": "extended",
+      "spec": "protocol/versions/2026-10-19/files.md#12-by-upload",
+      "outcome": "pass",
+      "detail": "uploaded and accepted by id (the harness did not echo the token, which the protocol does not require)"
+    },
+    {
+      "id": "F-01",
+      "title": "A harness can be created, updated and deleted",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/harnesses.md#4-managing-harnesses",
+      "outcome": "pass",
+      "detail": "created, updated and deleted chrn_1574974466356833130715296182417758792988"
+    },
+    {
+      "id": "F-03",
+      "title": "A skill folder round-trips through create and read",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/harnesses.md#42-skills",
+      "outcome": "pass",
+      "detail": "3 files incl. nested + binary"
+    },
+    {
+      "id": "F-04",
+      "title": "An unrelated harness edit does not destroy skill contents",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/harnesses.md#42-skills",
+      "outcome": "pass",
+      "detail": ""
+    },
+    {
+      "id": "F-05",
+      "title": "A skill bundle without SKILL.md is refused at config time",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/harnesses.md#42-skills",
+      "outcome": "pass",
+      "detail": "refused with HTTP 422"
+    },
+    {
+      "id": "F-06",
+      "title": "MCP servers and disabled tools round-trip",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/harnesses.md#41-mcp-servers",
+      "outcome": "pass",
+      "detail": "mcp + disabledTools preserved"
+    },
+    {
+      "id": "P-01",
+      "title": "The plugins capability names the manifest schemas it installs",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/plugins.md#7-discovery",
+      "outcome": "skip",
+      "detail": "this server reports the plugins capability false or absent, and the Plugins chapter is optional at every class"
+    },
+    {
+      "id": "P-02",
+      "title": "A plugin package round-trips, and is derived rather than copied",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/plugins.md#2-the-plugin-object",
+      "outcome": "skip",
+      "detail": "this server reports the plugins capability false or absent, and the Plugins chapter is optional at every class"
+    },
+    {
+      "id": "P-03",
+      "title": "A package without plugin.json is refused at configuration time",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/plugins.md#21-files",
+      "outcome": "skip",
+      "detail": "this server reports the plugins capability false or absent, and the Plugins chapter is optional at every class"
+    },
+    {
+      "id": "P-04",
+      "title": "A component name collision across the harness and a plugin is refused",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/plugins.md#42-one-namespace-checked-at-configuration-time",
+      "outcome": "skip",
+      "detail": "this server reports the plugins capability false or absent, and the Plugins chapter is optional at every class"
+    },
+    {
+      "id": "P-05",
+      "title": "An unrelated harness edit does not destroy plugin contents",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/plugins.md#3-installing-a-plugin",
+      "outcome": "skip",
+      "detail": "this server reports the plugins capability false or absent, and the Plugins chapter is optional at every class"
+    },
+    {
+      "id": "P-06",
+      "title": "A harness exports as a package that installs, without its credentials",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/plugins.md#5-exporting-a-harness-as-a-plugin",
+      "outcome": "skip",
+      "detail": "this server reports the plugins capability false or absent, and the Plugins chapter is optional at every class"
+    },
+    {
+      "id": "P-07",
+      "title": "A component that fails to load is recorded, not silently dropped",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/plugins.md#22-what-the-server-derives",
+      "outcome": "skip",
+      "detail": "this server reports the plugins capability false or absent, and the Plugins chapter is optional at every class"
+    },
+    {
+      "id": "P-08",
+      "title": "A disabled plugin stays installed, and stays disabled",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/plugins.md#3-installing-a-plugin",
+      "outcome": "skip",
+      "detail": "this server reports the plugins capability false or absent, and the Plugins chapter is optional at every class"
+    },
+    {
+      "id": "P-09",
+      "title": "An unsupported manifest schema is refused, naming the supported ones",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/plugins.md#22-what-the-server-derives",
+      "outcome": "skip",
+      "detail": "this server reports the plugins capability false or absent, and the Plugins chapter is optional at every class"
+    },
+    {
+      "id": "P-11",
+      "title": "A plugin's MCP server answers the agent's tool call",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/plugins.md#4-binding-at-run-time",
+      "outcome": "skip",
+      "detail": "this server reports the plugins capability false or absent, and the Plugins chapter is optional at every class"
+    },
+    {
+      "id": "P-10",
+      "title": "Two plugins with the same name are refused",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/plugins.md#3-installing-a-plugin",
+      "outcome": "skip",
+      "detail": "this server reports the plugins capability false or absent, and the Plugins chapter is optional at every class"
+    },
+    {
+      "id": "F-07",
+      "title": "Configured harnesses are cleaned up",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/harnesses.md#53-delete",
+      "outcome": "pass",
+      "detail": "3 removed"
+    },
+    {
+      "id": "F-08",
+      "title": "A session can be deleted at the protocol path",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/sessions.md#6-deleting",
+      "outcome": "pass",
+      "detail": "deleted hsess718518501197071946118312058924037713717, now 404"
+    },
+    {
+      "id": "F-09",
+      "title": "Deleting a harness keeps its sessions, or states how long they can be restored",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/harnesses.md#53-delete",
+      "outcome": "pass",
+      "detail": "kept: hsess168275560423807566652015557397899420660 still reads after its harness was deleted"
+    },
+    {
+      "id": "F-10",
+      "title": "A repeated create with the same Idempotency-Key returns the first harness",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/harnesses.md#51-create",
+      "outcome": "pass",
+      "detail": "chrn_1031901978549531180611456189944484628932 returned for both attempts, a changed request refused with 409, made again after its delete"
+    },
+    {
+      "id": "F-02",
+      "title": "Creating a harness with an unsupported base is refused",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/harnesses.md#41-create",
+      "outcome": "pass",
+      "detail": ""
+    },
+    {
+      "id": "T-08",
+      "title": "A request carrying reserved fields is accepted, not rejected",
+      "class": "core",
+      "spec": "protocol/versions/2026-10-19/tasks.md#11-request-fields",
+      "outcome": "pass",
+      "detail": "accepted and ran"
+    },
+    {
+      "id": "T-09",
+      "title": "Reserved fields are reported in metadata.ignored_fields",
+      "class": "core",
+      "spec": "protocol/versions/2026-10-19/tasks.md#14-reserved-fields-tools-and-include",
+      "outcome": "pass",
+      "detail": "ignored_fields=['tools', 'include']"
+    },
+    {
+      "id": "T-10",
+      "title": "A task that sends no reserved field is not told one was ignored",
+      "class": "core",
+      "spec": "protocol/versions/2026-10-19/tasks.md#11-request-fields",
+      "outcome": "pass",
+      "detail": ""
+    },
+    {
+      "id": "T-12",
+      "title": "A task over its step budget ends incomplete, naming the budget",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/tasks.md#11-request-fields",
+      "outcome": "skip",
+      "detail": "the fixture's tool uhp_steps was never called, so no work was cut at the budget and nothing was measured. The fixture at https://uhp-fixture.harnessrouter.ai/mcp may predate this check's tool."
+    },
+    {
+      "id": "T-13",
+      "title": "A task ends on a question for the person, and its answer continues it",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/tasks.md#32-asking-the-person",
+      "outcome": "skip",
+      "detail": "this server does not report the input_requests capability"
+    },
+    {
+      "id": "T-14",
+      "title": "A secret answer reaches the harness and nothing a client reads",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/tasks.md#32-asking-the-person",
+      "outcome": "skip",
+      "detail": "this server does not report the input_requests capability"
+    },
+    {
+      "id": "R-01",
+      "title": "A shared session is published, and the link alone opens it",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/sessions.md#5-session-sharing",
+      "outcome": "skip",
+      "detail": "this server reports session_sharing false, and Sessions \u00a75 is a MAY"
+    },
+    {
+      "id": "R-02",
+      "title": "The share can be read back from the endpoint that minted it",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/sessions.md#5-session-sharing",
+      "outcome": "skip",
+      "detail": "this server reports session_sharing false, and Sessions \u00a75 is a MAY"
+    },
+    {
+      "id": "R-03",
+      "title": "A share id is not a credential for the API",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/sessions.md#5-session-sharing",
+      "outcome": "skip",
+      "detail": "this server reports session_sharing false, and Sessions \u00a75 is a MAY"
+    },
+    {
+      "id": "R-04",
+      "title": "The shared view is read-only",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/sessions.md#5-session-sharing",
+      "outcome": "skip",
+      "detail": "this server reports session_sharing false, and Sessions \u00a75 is a MAY"
+    },
+    {
+      "id": "R-05",
+      "title": "The shared view exposes no credentials",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/sessions.md#5-session-sharing",
+      "outcome": "skip",
+      "detail": "this server reports session_sharing false, and Sessions \u00a75 is a MAY"
+    },
+    {
+      "id": "R-06",
+      "title": "Revocation kills every link minted for the session",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/sessions.md#5-session-sharing",
+      "outcome": "skip",
+      "detail": "this server reports session_sharing false, and Sessions \u00a75 is a MAY"
+    },
+    {
+      "id": "R-07",
+      "title": "Deleting a session takes its shared view with it",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/sessions.md#6-deleting",
+      "outcome": "skip",
+      "detail": "could not share the disposable session (HTTP 404)"
+    },
+    {
+      "id": "R-08",
+      "title": "A bodyless POST publishes, as \u00a75 says it does",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/sessions.md#5-session-sharing",
+      "outcome": "skip",
+      "detail": "this server reports session_sharing false, and Sessions \u00a75 is a MAY"
+    },
+    {
+      "id": "EN-01",
+      "title": "An environment is created with a fixed mount path and reads back",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/environments.md#2-the-environment-object",
+      "outcome": "skip",
+      "detail": "this server reports the environments capability false or absent, and the Environments chapter is optional at every class"
+    },
+    {
+      "id": "EN-02",
+      "title": "Files go in by path and come back byte for byte; escapes are refused",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/environments.md#3-files",
+      "outcome": "skip",
+      "detail": "this server reports the environments capability false or absent, and the Environments chapter is optional at every class"
+    },
+    {
+      "id": "EN-03",
+      "title": "A build snapshots the source and becomes the active version",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/environments.md#4-builds-and-versions",
+      "outcome": "skip",
+      "detail": "this server reports the environments capability false or absent, and the Environments chapter is optional at every class"
+    },
+    {
+      "id": "EN-04",
+      "title": "Editing the source changes nothing until the next build; rollback is a pointer",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/environments.md#4-builds-and-versions",
+      "outcome": "skip",
+      "detail": "this server reports the environments capability false or absent, and the Environments chapter is optional at every class"
+    },
+    {
+      "id": "EN-05",
+      "title": "A harness names an environment; a task on an unbuilt one is refused before it starts",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/environments.md#5-attaching-an-environment",
+      "outcome": "skip",
+      "detail": "this server reports the environments capability false or absent, and the Environments chapter is optional at every class"
+    },
+    {
+      "id": "EN-06",
+      "title": "The environment's harness list names the harness that reads it",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/environments.md#5-attaching-an-environment",
+      "outcome": "skip",
+      "detail": "this server reports the environments capability false or absent, and the Environments chapter is optional at every class"
+    },
+    {
+      "id": "EN-07",
+      "title": "A task reads the environment at its mount path, read-only, and its session names it",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/environments.md#6-what-a-session-sees",
+      "outcome": "skip",
+      "detail": "this server reports the environments capability false or absent, and the Environments chapter is optional at every class"
+    },
+    {
+      "id": "EN-09",
+      "title": "A package check answers for a known name and reports one that is not there",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/environments.md#4-builds-and-versions",
+      "outcome": "skip",
+      "detail": "this server reports the environments capability false or absent, and the Environments chapter is optional at every class"
+    },
+    {
+      "id": "EN-08",
+      "title": "Configured environments are cleaned up",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/environments.md#2-the-environment-object",
+      "outcome": "skip",
+      "detail": "no environments were created by earlier checks"
+    },
+    {
+      "id": "ME-01",
+      "title": "A memory is a node in a tree: it reads back with its parent, its ancestors and the caller's privileges",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/memories.md#2-the-memory-object",
+      "outcome": "skip",
+      "detail": "this server reports the memories capability false or absent, and the Memories chapter is optional at every class"
+    },
+    {
+      "id": "ME-02",
+      "title": "A stated record is kept as stated, marked untrusted, and its writer is the server's stamp",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/memories.md#4-records",
+      "outcome": "skip",
+      "detail": "this server reports the memories capability false or absent, and the Memories chapter is optional at every class"
+    },
+    {
+      "id": "ME-03",
+      "title": "A question covers the memory and what is below it, names where each answer is, and never looks above",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/memories.md#61-search-finds-the-place-then-the-agent-walks",
+      "outcome": "skip",
+      "detail": "this server reports the memories capability false or absent, and the Memories chapter is optional at every class"
+    },
+    {
+      "id": "ME-04",
+      "title": "What a provider does not do is said, never ignored",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/memories.md#63-the-response",
+      "outcome": "skip",
+      "detail": "this server reports the memories capability false or absent, and the Memories chapter is optional at every class"
+    },
+    {
+      "id": "ME-05",
+      "title": "A revision appends a version and the earlier one stays in the history",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/memories.md#53-nothing-is-overwritten",
+      "outcome": "skip",
+      "detail": "this server reports the memories capability false or absent, and the Memories chapter is optional at every class"
+    },
+    {
+      "id": "ME-06",
+      "title": "A record of one memory is not found through another",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/memories.md#33-enforcement",
+      "outcome": "skip",
+      "detail": "this server reports the memories capability false or absent, and the Memories chapter is optional at every class"
+    },
+    {
+      "id": "ME-07",
+      "title": "Forget closes a record and keeps its trace; erase reports what could not be reached",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/memories.md#52-two-ways-to-remove",
+      "outcome": "skip",
+      "detail": "this server reports the memories capability false or absent, and the Memories chapter is optional at every class"
+    },
+    {
+      "id": "ME-09",
+      "title": "Content is an ordered list of text and file parts, and a provider keeps what it says it keeps",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/memories.md#43-content",
+      "outcome": "skip",
+      "detail": "this server reports the memories capability false or absent, and the Memories chapter is optional at every class"
+    },
+    {
+      "id": "ME-10",
+      "title": "Entities and relationships are records and references, read as one graph",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/memories.md#66-the-graph",
+      "outcome": "skip",
+      "detail": "this server reports the memories capability false or absent, and the Memories chapter is optional at every class"
+    },
+    {
+      "id": "ME-11",
+      "title": "A fact that holds one value ends what it replaced, keeps a disagreement, takes its place in the past, and says what it did",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/memories.md#44-facts-that-change",
+      "outcome": "skip",
+      "detail": "this server reports the memories capability false or absent, and the Memories chapter is optional at every class"
+    },
+    {
+      "id": "ME-12",
+      "title": "A record found on one side of a disagreement brings the other",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/memories.md#63-the-response",
+      "outcome": "skip",
+      "detail": "this server reports the memories capability false or absent, and the Memories chapter is optional at every class"
+    },
+    {
+      "id": "ME-13",
+      "title": "A memory's standing records are read newest first, within a budget, from that memory alone",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/memories.md#91-what-a-session-does",
+      "outcome": "skip",
+      "detail": "this server reports the memories capability false or absent, and the Memories chapter is optional at every class"
+    },
+    {
+      "id": "ME-08",
+      "title": "A memory moves with its subtree, and deleting it takes the subtree",
+      "class": "full",
+      "spec": "protocol/versions/2026-10-19/memories.md#2-the-memory-object",
+      "outcome": "skip",
+      "detail": "this server reports the memories capability false or absent, and the Memories chapter is optional at every class"
+    }
+  ]
+}
