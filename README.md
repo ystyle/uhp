@@ -36,11 +36,11 @@ UHP 定义「产品如何通过 HTTP 驱动一个完整的 agent harness」：�
 | environments（EN 组） | ✅ **9/9** | 对象/文件/build/版本回滚/harness 挂载/只读挂载/包检查（registry 接缝）全过 |
 | memories（ME 组） | ✅ **13/13** | 树/记录/修订历史/遗忘擦除/召回/prime/实体图/时序事实全过 |
 | 真实 harness（消费方仓） | ✅ opencode 2.x | [../uhp-opencode](../uhp-opencode)：8 条测试（含全栈两轮问答）+ `real-smoke.sh` 真实跑通（shell 工具调用、permission/form → input_request） |
-| 真实 harness（消费方仓） | ✅ ACP 通用 | [../uhp-acp](../uhp-acp)：3 条真 ACP 协议测试（假 agent 子进程）+ `real-smoke.sh` 跑通 `opencode acp`（一次覆盖 dsh/pi/claude-code 这类 ACP agent） |
+| 真实 harness（消费方仓） | ✅ ACP 通用 | [../uhp-acp](../uhp-acp)：5 条真 ACP 协议测试（假 agent 子进程，含 permission 两轮问答与全栈）+ `real-smoke.sh` 跑通 `opencode acp`（一次覆盖 dsh/pi/claude-code 这类 ACP agent） |
 
 > 现在能用：`UhpClient` 对接任意 UHP 服务端；`UhpHttpServer` + `HarnessDriver` 起一个**通过官方一致性套件三档全部检查**的 UHP 服务端（harness 增删改、技能包、文件上传/产物下载、会话列举/删除/分享、提问与预算、环境与记忆、插件校验/派生/导出/MCP 调用）。
 > 真实 harness：opencode 2.x 的适配器在**另一个消费方仓** [../uhp-opencode](../uhp-opencode)（含 4 条测试与真实链路冒烟脚本；按本仓边界，适配器不放进 SDK）。
-> ACP 通用 driver 也已落地（[../uhp-acp](../uhp-acp)）；它尚未把 ACP 的 `session/request_permission` 同步回调接成 UHP 的两轮问答（opencode 适配器里那套做法可直接复用）。
+> ACP 通用 driver 也已落地（[../uhp-acp](../uhp-acp)），`session/request_permission` 已接成 UHP 的两轮问答。
 
 ## 目录
 
