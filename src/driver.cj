@@ -21,6 +21,9 @@ import std.collection.{ArrayList, HashMap}
 import std.convert.*
 import std.sync.{AtomicBool, Mutex}
 import std.time.DateTime
+import std.io.ByteBuffer
+import jsonvalue.*
+import stdx.encoding.json.stream.*
 import acp.*
 import acp.types.*
 import acp.transport.*
@@ -64,6 +67,16 @@ class TurnState {
     public var permOptions: Array<(String, String)> = []
     public var permAnswer: Option<String> = None
     public var permAsked: Bool = false
+    // 挂起的 elicitation（表单）请求
+    public var elicitPending: Bool = false
+    public var elicitTitle: String = ""
+    public var elicitKind: String = "free_text"
+    public var elicitOptions: Array<(String, String)> = []
+    public var elicitFieldKey: String = ""
+    public var elicitValueKind: String = "string"
+    public var elicitMulti: Bool = false
+    public var elicitAnswer: Option<String> = None
+    public var elicitAsked: Bool = false
 
     public init(acpSession: String) {
         this.acpSession = acpSession
@@ -129,6 +142,8 @@ public class AcpDriver <: HarnessDriver {
             synchronized(this.lock) {
                 if (st.permPending) {
                     st.permAnswer = Some(ctx.answers[0])
+                } else if (st.elicitPending) {
+                    st.elicitAnswer = Some(ctx.answers[0])
                 }
             }
         }
@@ -200,6 +215,27 @@ public class AcpDriver <: HarnessDriver {
                 }
                 return TurnOutcome.Incomplete(IncompleteReason.InputRequired, None)
             }
+            let askElicit = synchronized(this.lock) {
+                state.elicitPending && !state.elicitAsked && state.elicitAnswer.isNone()
+            }
+            if (askElicit) {
+                let kind = synchronized(this.lock) {
+                    state.elicitKind
+                }
+                let title = synchronized(this.lock) {
+                    state.elicitTitle
+                }
+                let options = synchronized(this.lock) {
+                    state.elicitOptions
+                }
+                let _ = sink.ask(kind, title, options)
+                synchronized(this.lock) {
+                    state.elicitAsked = true
+                    state.sink = None
+                    this.currentSink = None
+                }
+                return TurnOutcome.Incomplete(IncompleteReason.InputRequired, None)
+            }
             if (cancel.isCancelled()) {
                 client.cancel(acpSession)
             }
@@ -218,9 +254,15 @@ public class AcpDriver <: HarnessDriver {
             let c = AcpClient(transport)
             c.setOnSessionUpdate({ sid, update => this.onUpdate(sid, update) })
             c.setOnRequestPermission({ req => this.onPermission(req) })
+            c.setOnElicitationCreate({ req => this.onElicitation(req) })
             c.setOnError({ e => eprintln("acp: rpc error: " + e.toString()) })
             let info = Implementation(this.opts.clientName, "0.1.0")
-            match (c.connect(info, ClientCapabilities())) {
+            // 只声明 form 能力：url 模式的引导式外链没有对应的 UHP 提问形态，不假装支持
+            let caps = ClientCapabilities()
+            let elicitCaps = ElicitationCapabilities()
+            elicitCaps.form = Some(EmptyCapability())
+            caps.elicitation = Some(elicitCaps)
+            match (c.connect(info, caps)) {
                 case Result.Ok(_) =>
                     this.client = Some(c)
                     return Some(c)
@@ -272,6 +314,138 @@ public class AcpDriver <: HarnessDriver {
             }
             return None
         }
+    }
+
+
+    // elicitation/create（表单）：和 permission 一样是同步回调，靠挂起槽 + 下一轮答案接起来。
+    // 单字段映射成 UHP 的 choice/confirm/free_text；多字段压成「回一个 JSON 对象」（提示里列出 key）。
+    private func onElicitation(req: CreateElicitationRequest): CreateElicitationResponse {
+        let sid = req.sessionId ?? ""
+        let st = match (this.stateByAcpSession(sid)) {
+            case Some(s) => s
+            case None => return CreateElicitationResponse.declined()
+        }
+        if (req.mode != ElicitationModeForm) {
+            return CreateElicitationResponse.declined()
+        }
+        let schema = match (req.requestedSchema) {
+            case Some(sc) => sc
+            case None => return CreateElicitationResponse.declined()
+        }
+        if (schema.properties.size == 0) {
+            return CreateElicitationResponse.declined()
+        }
+        var title = req.message
+        if (title.size == 0) {
+            title = match (schema.title) {
+                case Some(t) => t
+                case None => "Please provide input"
+            }
+        }
+        var singleKey = ""
+        var valueKind = "string"
+        var kind = "free_text"
+        var options = Array<(String, String)>()
+        let multi = schema.properties.size > 1
+        if (!multi) {
+            for ((k, pfield) in schema.properties) {
+                singleKey = k
+                let ptype = pfield.`type`
+                title = match (pfield.title) {
+                    case Some(t) => t
+                    case None => title
+                }
+                if (ptype == PropTypeBoolean) {
+                    kind = "confirm"
+                    valueKind = "bool"
+                    options = [("true", "Yes"), ("false", "No")]
+                } else if (ptype == PropTypeNumber || ptype == PropTypeInteger) {
+                    kind = "free_text"
+                    valueKind = "number"
+                } else if (ptype == PropTypeArray) {
+                    kind = "free_text"
+                    valueKind = "array"
+                } else if (ptype == PropTypeString) {
+                    let opts = ArrayList<(String, String)>()
+                    match (pfield.titledOptions) {
+                        case Some(list) =>
+                            for (o in list) {
+                                opts.add((o.`const`, o.title))
+                            }
+                        case None => ()
+                    }
+                    if (opts.size == 0) {
+                        match (pfield.enumValues) {
+                            case Some(vals) =>
+                                for (v in vals) {
+                                    opts.add((v, v))
+                                }
+                            case None => ()
+                        }
+                    }
+                    if (opts.size > 0) {
+                        kind = "choice"
+                        options = opts.toArray()
+                    } else {
+                        kind = "free_text"
+                        valueKind = "string"
+                    }
+                } else {
+                    kind = "free_text"
+                    valueKind = "string"
+                }
+            }
+        } else {
+            var keys = ""
+            for ((k, _) in schema.properties) {
+                keys = if (keys.size == 0) { k } else { keys + ", " + k }
+            }
+            title = title + " (reply a JSON object with keys: " + keys + ")"
+            kind = "free_text"
+        }
+        synchronized(this.lock) {
+            st.elicitPending = true
+            st.elicitTitle = title
+            st.elicitKind = kind
+            st.elicitOptions = options
+            st.elicitFieldKey = singleKey
+            st.elicitValueKind = valueKind
+            st.elicitMulti = multi
+            st.elicitAnswer = None
+            st.elicitAsked = false
+        }
+        let deadline = nowMillis() + this.opts.permissionTimeoutSeconds * 1000
+        while (nowMillis() < deadline) {
+            let ans = synchronized(this.lock) {
+                st.elicitAnswer
+            }
+            match (ans) {
+                case Some(a) =>
+                    synchronized(this.lock) {
+                        st.elicitPending = false
+                        st.elicitAnswer = None
+                        st.elicitAsked = false
+                    }
+                    let contentJson = buildElicitationContent(singleKey, valueKind, multi, a)
+                    match (contentJson) {
+                        case Some(cj) =>
+                            let value = try {
+                                JsonValue.fromJson(JsonReader(ByteBuffer(cj.toArray())))
+                            } catch (e: Exception) {
+                                JsonValue.Null
+                            }
+                            return CreateElicitationResponse.accepted(content: Some(value))
+                        case None => return CreateElicitationResponse.cancelled()
+                    }
+                case None => ()
+            }
+            sleep(Duration.millisecond * 10)
+        }
+        synchronized(this.lock) {
+            st.elicitPending = false
+            st.elicitAsked = false
+        }
+        return CreateElicitationResponse.declined()
     }
 
     private func onPermission(req: RequestPermissionRequest): RequestPermissionResponse {
@@ -493,4 +667,45 @@ func base64Encode(bytes: Array<UInt8>): String {
         }
     }
     return String.fromUtf8(out.toArray())
+}
+
+// 把 UHP 的一行答案编码成 elicitation content 对象（匹配 requestedSchema）
+func buildElicitationContent(key: String, valueKind: String, multi: Bool, answer: String): Option<String> {
+    if (multi) {
+        let t = answer.trimAscii()
+        if (t.size >= 2 && t.startsWith("{") && t.endsWith("}")) {
+            return Some(answer)
+        }
+        return None
+    }
+    let out = ByteBuffer()
+    let w = JsonWriter(out)
+    w.startObject()
+    w.writeName(key)
+    if (valueKind == "bool") {
+        if (answer == "true" || answer == "false") {
+            w.jsonValue(answer)
+        } else {
+            w.writeValue(answer)
+        }
+    } else if (valueKind == "number") {
+        match (Float64.tryParse(answer)) {
+            case Some(_) => w.jsonValue(answer)
+            case None => w.writeValue(answer)
+        }
+    } else if (valueKind == "array") {
+        w.startArray()
+        for (part in answer.split(",")) {
+            let v = part.trimAscii()
+            if (v.size > 0) {
+                w.writeValue(v)
+            }
+        }
+        w.endArray()
+    } else {
+        w.writeValue(answer)
+    }
+    w.endObject()
+    w.flush()
+    return Some(String.fromUtf8(out.bytes()))
 }

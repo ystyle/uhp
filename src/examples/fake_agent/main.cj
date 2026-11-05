@@ -43,6 +43,24 @@ main() {
         if (text.contains("maxturn")) {
             return PromptResponse(StopReasonMaxTurnRequests)
         }
+        if (text.contains("elicit")) {
+            let pfield = ElicitationPropertySchema()
+            pfield.`type` = PropTypeString
+            pfield.title = Some("Your name")
+            let schema = ElicitationSchema.of([("name", pfield)])
+            let req = CreateElicitationRequest.form(ctx.sessionId, "Please tell me your name", schema)
+            match (agent.createElicitation(req)) {
+                case Result.Ok(r) =>
+                    let c = match (r.content) {
+                        case Some(v) => v.stringify()
+                        case None => ""
+                    }
+                    ctx.emit(SessionUpdate.agentMessage("elicitation: " + r.action + " content=" + c))
+                case Result.Err(e) =>
+                    ctx.emit(SessionUpdate.agentMessage("elicitation error: " + e))
+            }
+            return PromptResponse(StopReasonEndTurn)
+        }
         if (text.contains("perm")) {
             let tc = ToolCallUpdate()
             tc.toolCallId = "call_perm"

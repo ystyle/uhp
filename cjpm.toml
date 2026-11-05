@@ -4,6 +4,8 @@
   "acp" = { path = "../acp-cj" }
   # acp-cj 的传输层签名用 ystyle::jsonrpc Result/JsonRpcError，本仓 driver 直接匹配它
   "ystyle::jsonrpc" = "0.7.9"
+  # elicitation 的 content 是 JSON 值，用 jsonvalue 的 JsonValue 承载
+  "jsonvalue" = "1.1.1"
 
 [package]
   cjc-version = "1.2.0"

@@ -412,3 +412,31 @@ func full_stack_artifact_is_listed_and_downloadable(): Unit {
     @Expect(content, "artifact-ok")
     server.close()
 }
+
+
+@Test
+func acp_elicitation_becomes_input_request(): Unit {
+    let driver = AcpDriver(optionsFor())
+    let sink1 = RecordingSink()
+    let first = driver.run(TurnContext("uhp-acp-elicit", "elicit please", "m"), sink1, CancelToken())
+    var incomplete = false
+    match (first) {
+        case TurnOutcome.Incomplete(_, _) => incomplete = true
+        case _ => ()
+    }
+    @Expect(incomplete, true)
+    @Expect(sink1.asks.size, 1)
+    let ask1 = sink1.asks[0]
+    @Expect(ask1[0], "free_text")
+    @Expect(ask1[1].contains("Your name"), true)
+    let sink2 = RecordingSink()
+    let second = driver.run(TurnContext("uhp-acp-elicit", "", "m", answers: ["Ada"]), sink2, CancelToken())
+    var completed = false
+    match (second) {
+        case TurnOutcome.Completed(_) => completed = true
+        case _ => ()
+    }
+    @Expect(completed, true)
+    @Expect(sink2.text.contains("elicitation: accept"), true)
+    @Expect(sink2.text.contains("Ada"), true)
+}
