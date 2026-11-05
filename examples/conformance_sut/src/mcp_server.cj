@@ -6,7 +6,7 @@
 //      它验证的是「服务端把插件的 MCP 服务器绑定进任务、driver 真能调到」，不是「公网通不通」。
 //
 // 协议：streamable-HTTP 的最小实现（POST /mcp，JSON-RPC 2.0，直接回 JSON 而非 SSE）。
-package uhp.examples.conformance_sut
+package uhp_conformance_sut
 
 import std.collection.{ArrayList, HashMap}
 import std.io.ByteBuffer

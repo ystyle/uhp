@@ -2,7 +2,7 @@
 //
 // 这是 **harness 侧** 的行为（UHP 不执行 MCP）：SDK 只负责把本轮可用的服务器并集通过 TurnContext 交给 driver，
 // driver 自己去连。这里的实现够 P-11 用：initialize -> notifications/initialized -> tools/call。
-package uhp.examples.conformance_sut
+package uhp_conformance_sut
 
 import std.collection.{ArrayList, HashMap}
 import std.io.*

@@ -22,18 +22,13 @@
   repository = "https://atomgit.com/ystyle/uhp"
   # 制品清单：只带源码与许可。include 一律锚定（未锚定会连带 example/src、tests/src）。
   include = ["/src", "/LICENSE"]
-  exclude = ["/docs", "/tools", "/resources", "/scripts", "/examples", "/target"]
+  exclude = ["/docs", "/tools", "/resources", "/scripts", "/examples", "/target", "/src/**/*_test.cj"]
 
 
 
 
 
 
-# 一致性套件的被测服务端（可执行，不进制品：exclude 已挡 /examples）
-[package.package-configuration."uhp.examples.conformance_sut"]
-  output-type = "executable"
-  # 静态链接：SUT 常在没有 cjvs 环境的容器/CI 里跑，不能依赖 libcangjie-runtime.so
-  compile-option = "--static"
 
 [target.x86_64-unknown-linux-gnu.bin-dependencies]
   path-option = ["${CANGJIE_STDX_PATH}"]

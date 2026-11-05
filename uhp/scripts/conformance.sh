@@ -25,9 +25,10 @@ echo "==> 构建 SUT"
 eval "$(cjvs env zsh)"
 eval "$(cjvs stdx-env zsh)"
 (cd "$ROOT" && cjpm build -j 8)
+(cd "$ROOT/examples/conformance_sut" && cjpm build -j 8)
 
 echo "==> 启动 SUT（端口 $PORT）"
-"$ROOT/target/release/bin/uhp.examples.conformance_sut" "$PORT" > /tmp/uhp-sut.log 2>&1 &
+"$ROOT/examples/conformance_sut/target/release/bin/main" "$PORT" > /tmp/uhp-sut.log 2>&1 &
 SUT_PID=$!
 trap 'kill $SUT_PID 2>/dev/null || true' EXIT
 

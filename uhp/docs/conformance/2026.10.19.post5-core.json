@@ -3,7 +3,7 @@
   "protocol_version": "2026-10-19",
   "suite_protocol_version": "2026-10-19",
   "suite_version": "2026.10.19.post5",
-  "generated_at": "2026-11-05T09:52:55Z",
+  "generated_at": "2026-11-05T10:22:12Z",
   "target": "http://127.0.0.1:8471",
   "target_label": "",
   "implementation": {
@@ -204,7 +204,7 @@
       "class": "core",
       "spec": "protocol/versions/2026-10-19/lifecycle.md#4-session-lifecycle",
       "outcome": "pass",
-      "detail": "session_id=hsess1684561807254506487816402034064778031076"
+      "detail": "session_id=hsess1835623014640636435115165199692098586570"
     },
     {
       "id": "T-05",
@@ -316,7 +316,7 @@
       "class": "core",
       "spec": "protocol/versions/2026-10-19/sessions.md#1-continuing-a-session",
       "outcome": "pass",
-      "detail": "session hsess1684561807254506487816402034064778031076 extended"
+      "detail": "session hsess1835623014640636435115165199692098586570 extended"
     },
     {
       "id": "C-02",

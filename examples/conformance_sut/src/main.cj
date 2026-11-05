@@ -6,7 +6,7 @@
 // 用确定性的 driver 而不是真实模型：套件检查的是协议行为，不是模型能力，CI 因此不需要付费模型。
 // 它会识别「Create a file named X containing exactly: Y」这类输入并真的产出文件，
 // 好让 Extended 类的产物检查（X-06/07/08）测到东西而不是全程 skip。
-package uhp.examples.conformance_sut
+package uhp_conformance_sut
 
 import std.collection.HashMap
 import std.convert.*

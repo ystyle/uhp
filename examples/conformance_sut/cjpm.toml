@@ -1,0 +1,24 @@
+[dependencies]
+  # 依赖 monorepo 里的 uhp 成员；因为本目录不在 workspace 成员列表里，用 path 依赖
+  "uhp" = { path = "../../uhp" }
+
+[package]
+  cjc-version = "1.2.0"
+  name = "uhp_conformance_sut"
+  description = "UHP 官方一致性套件的被测服务端（SUT）"
+  version = "0.1.0"
+  license = ["MulanPSL-2.0"]
+  authors = ["ystyle"]
+  output-type = "executable"
+  # 静态链接：SUT 常在没有 cjvs 环境的容器/CI 里跑
+  compile-option = "--static"
+  link-option = "-lstdx.crypto.digest"
+
+[target.x86_64-unknown-linux-gnu.bin-dependencies]
+  path-option = ["${CANGJIE_STDX_PATH}"]
+[target.aarch64-unknown-linux-gnu.bin-dependencies]
+  path-option = ["${CANGJIE_STDX_PATH}"]
+[target.x86_64-apple-darwin.bin-dependencies]
+  path-option = ["${CANGJIE_STDX_PATH}"]
+[target.aarch64-apple-darwin.bin-dependencies]
+  path-option = ["${CANGJIE_STDX_PATH}"]

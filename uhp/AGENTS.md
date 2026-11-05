@@ -89,6 +89,9 @@ codec  <-  base  <-  generated  <-  handwritten
 - `include`/`exclude` 一律**锚定**（`/src`、`/docs`…）。未锚定 = 任意层级同名，会把 `examples/src` 打进制品或误挡 `src/docs`。
 - 发版前必须解包核对制品内容（工作区「发版前必须解包看制品」）。
 
+- tools/、resources/、scripts/、examples/ 进 git 但**不进 cjpm 制品**；*_test.cj 也从制品里排除（exclude 已配置）。
+- 一致性 SUT 不在本成员源码树里：examples/conformance_sut/ 是独立 cjpm 项目（path 依赖 uhp），scripts/conformance.sh 负责构建它。
+
 ## 7. 文档
 
 - 仓内 `docs/` 固定四件套（已落地）：`design.md`（架构 + 取舍 + 有意不做）、
