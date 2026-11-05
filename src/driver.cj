@@ -391,6 +391,24 @@ public class AcpDriver <: HarnessDriver {
             if (text.size > 0) {
                 sink.toolResult(uhpCall, text)
             }
+            // 文件产物：ACP 的 diff 内容块带 path + newText，直接作为产物交给 UHP
+            match (update.toolContent) {
+                case Some(items) =>
+                    for (item in items) {
+                        if (item.`type` == "diff") {
+                            match (item.path) {
+                                case Some(path) =>
+                                    match (item.newText) {
+                                        case Some(content) =>
+                                            sink.producedFile(path, content.toArray())
+                                        case None => ()
+                                    }
+                                case None => ()
+                            }
+                        }
+                    }
+                case None => ()
+            }
         }
     }
 }

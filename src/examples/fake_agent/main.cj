@@ -17,6 +17,14 @@ main() {
     let agent = AcpAgent(StdioTransport(), "uhp-fake-acp-agent", "0.1.0")
     agent.setPromptHandler({ ctx =>
         let text = ctx.getText()
+        if (text.contains("writefile")) {
+            let items = ArrayList<ToolCallContent>()
+            items.add(ToolCallContent.diff("out.txt", "artifact-ok"))
+            ctx.emit(SessionUpdate.toolCall("call_write", "write out.txt"))
+            ctx.emit(SessionUpdate.toolCallUpdate("call_write", status: "completed", content: items))
+            ctx.emit(SessionUpdate.agentMessage("wrote out.txt"))
+            return PromptResponse(StopReasonEndTurn)
+        }
         if (text.contains("files")) {
             var images = 0
             for (b in ctx.prompt) {

@@ -62,8 +62,10 @@ class RecordingSink <: TurnSink {
         return "inreq_test"
     }
 
+    public var produced: ArrayList<(String, String)> = ArrayList<(String, String)>()
+
     public func producedFile(filename: String, content: Array<UInt8>): Unit {
-        ()
+        this.produced.add((filename, String.fromUtf8(content)))
     }
 }
 
@@ -343,4 +345,70 @@ func input_files_are_mapped_to_acp_content_blocks(): Unit {
     @Expect(completed, true)
     // 1 个文本块 + 2 个文件块（txt 走 text 块、png 走 image 块）
     @Expect(sink.text.contains("files: 3 images: 1"), true)
+}
+
+
+@Test
+func acp_diff_update_becomes_produced_file(): Unit {
+    let driver = AcpDriver(optionsFor())
+    let sink = RecordingSink()
+    let outcome = driver.run(TurnContext("uhp-acp-write", "writefile please", "m"), sink, CancelToken())
+    var completed = false
+    match (outcome) {
+        case TurnOutcome.Completed(_) => completed = true
+        case _ => ()
+    }
+    @Expect(completed, true)
+    @Expect(sink.produced.size, 1)
+    let f0 = sink.produced[0]
+    @Expect(f0[0], "out.txt")
+    @Expect(f0[1], "artifact-ok")
+}
+
+func acpHttpGet(url: String): String {
+    let client = ClientBuilder().noProxy().readTimeout(Duration.second * 60).build()
+    try {
+        let req = HttpRequestBuilder()
+            .method("GET")
+            .url(url)
+            .header("authorization", "Bearer t")
+            .header("UHP-Version", "2026-10-19")
+            .build()
+        let rsp = client.send(req)
+        return readAllText2(rsp.body)
+    } finally {
+        client.close()
+    }
+}
+
+@Test
+func full_stack_artifact_is_listed_and_downloadable(): Unit {
+    let driver = AcpDriver(optionsFor())
+    let harness = ConfiguredHarness("chrn_acp", "ACP agent", "acp", "acp-agent", driver)
+    let engine = Engine([harness])
+    let tokens = HashMap<String, String>()
+    tokens["t"] = "p"
+    let uhp = UhpHttpServer(engine, Authenticator(tokens))
+    let server = ServerBuilder()
+        .addr("127.0.0.1")
+        .port(0)
+        .distributor(uhp.distributor())
+        .build()
+    let s = server
+    spawn {
+        s.serve()
+    }
+    let url = "http://127.0.0.1:" + waitPort2(server).toString()
+    let first = acpHttpJson(url + "/v1/responses", acpTaskBody("writefile please"))
+    @Expect(jsonStr(first, "status"), "completed")
+    let sid = jsonStr(first, "session_id")
+    @Expect(sid.size > 0, true)
+    let listBody = acpHttpGet(url + "/v1/sessions/" + sid + "/files")
+    let fid = jsonStr(listBody, "id")
+    let cid = jsonStr(listBody, "container_id")
+    @Expect(fid.size > 0, true)
+    @Expect(cid.size > 0, true)
+    let content = acpHttpGet(url + "/v1/containers/" + cid + "/files/" + fid + "/content")
+    @Expect(content, "artifact-ok")
+    server.close()
 }
