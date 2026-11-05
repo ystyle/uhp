@@ -4,11 +4,14 @@
   cjc-version = "1.2.0"
   compile-option = "-Woff unused"
   description = "UHP (Unified Harness Protocol) 仓颉 SDK：协议类型层 + 客户端 + 服务端骨架"
-  # 注意：M0（类型层 + SSE 解析）不依赖 stdx 的网络/TLS，故暂不声明 link-option。
-  # 接 HTTP 传输时会需要 digest（stdx.net.http 的 TLS 路径要 SHA-256，cjpm 不会自动推导）：
-  # 届时加回 link-option = "-lstdx.crypto.digest"，并确认链接器 -L 指向 cjvs 的 stdx 静态库目录。
-  # 本机实测：本仓的 bin-dependencies path-option 未生效（链接命令行里没有 stdx 的 -L），
-  # 所以现在加 -lstdx.crypto.digest 会直接报 cannot find；M1 接入 HTTP 时一并解决。
+  # 注意：M0/M1 的类型层、SSE 解析与客户端协议逻辑都不依赖 stdx 的网络/TLS，故暂不声明 link-option。
+  # 接真实 HTTP 传输时会需要 digest（stdx.net.http 的 TLS 路径要 SHA-256，cjpm 不会自动推导）。
+  #
+  # 本机实测（2026-11-05，cjpm 1.2.0）：把 link-option = "-lstdx.crypto.digest" 加回来时，
+  # **只有子包的测试二进制**（如 uhp.transport$test）链接失败（cannot find -lstdx.crypto.digest），
+  # 根包与其它子包的测试二进制链接正常；与 a2a-cj 的 cjpm.toml 逐行对比完全一致，原因未定位。
+  # 届时可行的绕法：① 把依赖网络的测试放到根包；② 链接时显式给出 stdx 的 -L（仅本机，勿提交）。
+  # 这条在“接入真实 HTTP 传输”那个任务里必须收口，不能带着它进发版。
   name = "uhp"
   output-type = "static"
   version = "0.1.0"
