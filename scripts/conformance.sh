@@ -47,12 +47,18 @@ from uhp_conformance.cli import main
 sys.exit(main())
 PY
 REPORT="$ROOT/docs/conformance/pending-$CLASS.json"
+
+# 失败也要把报告落盘——报告最该在失败时存在。先吞退出码，落盘后再按它退出。
+set +e
 PYTHONPATH=. ./venv/bin/python .run_conformance.py \
   --base-url "http://127.0.0.1:$PORT" --api-key "$API_KEY" \
   --class "$CLASS" --task-timeout 60 --plain --json "$REPORT"
+SUITE_EXIT=$?
+set -e
 
 # 报告按 <suite_version>-<class>.json 落盘（suite_version 是「我是哪个套件测的」的证据）
 VERSION=$(python3 -c "import json,sys;print(json.load(open('$REPORT'))['suite_version'])")
 mkdir -p "$ROOT/docs/conformance"
-mv "$REPORT" "$ROOT/docs/conformance/${VERSION}-${CLASS}.json"
-echo "==> 报告：docs/conformance/${VERSION}-${CLASS}.json"
+mv "$REPORT" "$ROOT/docs/conformance/$VERSION-$CLASS.json"
+echo "==> 报告：$ROOT/docs/conformance/$VERSION-$CLASS.json（suite exit=$SUITE_EXIT）"
+exit "$SUITE_EXIT"

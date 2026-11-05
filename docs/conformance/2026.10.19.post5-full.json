@@ -3,7 +3,7 @@
   "protocol_version": "2026-10-19",
   "suite_protocol_version": "2026-10-19",
   "suite_version": "2026.10.19.post5",
-  "generated_at": "2026-11-05T07:45:40Z",
+  "generated_at": "2026-11-05T07:51:22Z",
   "target": "http://127.0.0.1:8471",
   "target_label": "",
   "implementation": {
@@ -12,19 +12,8 @@
   },
   "requested_class": "full",
   "conformant": false,
-  "conformant_with_skips": true,
+  "conformant_with_skips": false,
   "skipped_not_verified": [
-    "P-01",
-    "P-02",
-    "P-03",
-    "P-04",
-    "P-05",
-    "P-06",
-    "P-07",
-    "P-08",
-    "P-09",
-    "P-11",
-    "P-10",
     "T-12",
     "T-13",
     "T-14",
@@ -68,9 +57,9 @@
   },
   "highest_class_passed": "extended",
   "summary": {
-    "pass": 60,
-    "fail": 0,
-    "skip": 44,
+    "pass": 70,
+    "fail": 1,
+    "skip": 33,
     "error": 0,
     "total": 104
   },
@@ -249,7 +238,7 @@
       "class": "core",
       "spec": "protocol/versions/2026-10-19/lifecycle.md#4-session-lifecycle",
       "outcome": "pass",
-      "detail": "session_id=hsess182180391018718515234500330230588166962"
+      "detail": "session_id=hsess175269441170547298316040879831833559774"
     },
     {
       "id": "T-05",
@@ -361,7 +350,7 @@
       "class": "core",
       "spec": "protocol/versions/2026-10-19/sessions.md#1-continuing-a-session",
       "outcome": "pass",
-      "detail": "session hsess182180391018718515234500330230588166962 extended"
+      "detail": "session hsess175269441170547298316040879831833559774 extended"
     },
     {
       "id": "C-02",
@@ -457,7 +446,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/harnesses.md#4-managing-harnesses",
       "outcome": "pass",
-      "detail": "created, updated and deleted chrn_1574974466356833130715296182417758792988"
+      "detail": "created, updated and deleted chrn_174927965290952525289290078642900418490"
     },
     {
       "id": "F-03",
@@ -496,88 +485,88 @@
       "title": "The plugins capability names the manifest schemas it installs",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/plugins.md#7-discovery",
-      "outcome": "skip",
-      "detail": "this server reports the plugins capability false or absent, and the Plugins chapter is optional at every class"
+      "outcome": "pass",
+      "detail": "plugin_schemas=['https://agent-plugins.org/schemas/1.0.0/plugin.schema.json']"
     },
     {
       "id": "P-02",
       "title": "A plugin package round-trips, and is derived rather than copied",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/plugins.md#2-the-plugin-object",
-      "outcome": "skip",
-      "detail": "this server reports the plugins capability false or absent, and the Plugins chapter is optional at every class"
+      "outcome": "pass",
+      "detail": "5 files, 2 servers, 1 skill derived"
     },
     {
       "id": "P-03",
       "title": "A package without plugin.json is refused at configuration time",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/plugins.md#21-files",
-      "outcome": "skip",
-      "detail": "this server reports the plugins capability false or absent, and the Plugins chapter is optional at every class"
+      "outcome": "pass",
+      "detail": "refused with HTTP 422 plugin_invalid"
     },
     {
       "id": "P-04",
       "title": "A component name collision across the harness and a plugin is refused",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/plugins.md#42-one-namespace-checked-at-configuration-time",
-      "outcome": "skip",
-      "detail": "this server reports the plugins capability false or absent, and the Plugins chapter is optional at every class"
+      "outcome": "pass",
+      "detail": "refused with 409 plugin_conflict"
     },
     {
       "id": "P-05",
       "title": "An unrelated harness edit does not destroy plugin contents",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/plugins.md#3-installing-a-plugin",
-      "outcome": "skip",
-      "detail": "this server reports the plugins capability false or absent, and the Plugins chapter is optional at every class"
+      "outcome": "pass",
+      "detail": ""
     },
     {
       "id": "P-06",
       "title": "A harness exports as a package that installs, without its credentials",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/plugins.md#5-exporting-a-harness-as-a-plugin",
-      "outcome": "skip",
-      "detail": "this server reports the plugins capability false or absent, and the Plugins chapter is optional at every class"
+      "outcome": "pass",
+      "detail": "exported 5 files as 'uhp-conformance-df91d1', reinstalled"
     },
     {
       "id": "P-07",
       "title": "A component that fails to load is recorded, not silently dropped",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/plugins.md#22-what-the-server-derives",
-      "outcome": "skip",
-      "detail": "this server reports the plugins capability false or absent, and the Plugins chapter is optional at every class"
+      "outcome": "pass",
+      "detail": "skipped: mcp.json#/mcpServers/conformance-broken"
     },
     {
       "id": "P-08",
       "title": "A disabled plugin stays installed, and stays disabled",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/plugins.md#3-installing-a-plugin",
-      "outcome": "skip",
-      "detail": "this server reports the plugins capability false or absent, and the Plugins chapter is optional at every class"
+      "outcome": "pass",
+      "detail": ""
     },
     {
       "id": "P-09",
       "title": "An unsupported manifest schema is refused, naming the supported ones",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/plugins.md#22-what-the-server-derives",
-      "outcome": "skip",
-      "detail": "this server reports the plugins capability false or absent, and the Plugins chapter is optional at every class"
+      "outcome": "pass",
+      "detail": "refused; supported=['https://agent-plugins.org/schemas/1.0.0/plugin.schema.json']"
     },
     {
       "id": "P-11",
       "title": "A plugin's MCP server answers the agent's tool call",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/plugins.md#4-binding-at-run-time",
-      "outcome": "skip",
-      "detail": "this server reports the plugins capability false or absent, and the Plugins chapter is optional at every class"
+      "outcome": "fail",
+      "detail": "the reply does not carry the fixture's answer 'UHP-FIXTURE:4f4276b83e' (status=completed, output='[{\"type\": \"message\", \"status\": \"completed\", \"role\": \"assistant\", \"content\": [{\"type\": \"output_text\", \"text\": \"This is the UHP conformance SUT. It echoes a deterministic reply so that protocol behaviour, not model quality, is what gets measu'). The agent never reached the plugin's server: either the host did not bind it at run time or the sandbox cannot reach https://uhp-fixture.harnessrouter.ai/mcp."
     },
     {
       "id": "P-10",
       "title": "Two plugins with the same name are refused",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/plugins.md#3-installing-a-plugin",
-      "outcome": "skip",
-      "detail": "this server reports the plugins capability false or absent, and the Plugins chapter is optional at every class"
+      "outcome": "pass",
+      "detail": "refused with 409 plugin_conflict"
     },
     {
       "id": "F-07",
@@ -585,7 +574,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/harnesses.md#53-delete",
       "outcome": "pass",
-      "detail": "3 removed"
+      "detail": "10 removed"
     },
     {
       "id": "F-08",
@@ -593,7 +582,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/sessions.md#6-deleting",
       "outcome": "pass",
-      "detail": "deleted hsess718518501197071946118312058924037713717, now 404"
+      "detail": "deleted hsess1193996740386865649010356953576059951320, now 404"
     },
     {
       "id": "F-09",
@@ -601,7 +590,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/harnesses.md#53-delete",
       "outcome": "pass",
-      "detail": "kept: hsess168275560423807566652015557397899420660 still reads after its harness was deleted"
+      "detail": "kept: hsess592117758996664290618226489555285171711 still reads after its harness was deleted"
     },
     {
       "id": "F-10",
@@ -609,7 +598,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/harnesses.md#51-create",
       "outcome": "pass",
-      "detail": "chrn_1031901978549531180611456189944484628932 returned for both attempts, a changed request refused with 409, made again after its delete"
+      "detail": "chrn_116769235641871398584243901700019333492 returned for both attempts, a changed request refused with 409, made again after its delete"
     },
     {
       "id": "F-02",
