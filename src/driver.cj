@@ -13,6 +13,7 @@ package uhp_opencode
 
 import std.collection.{ArrayList, HashMap}
 import std.convert.*
+import std.fs.{File as FsFile, Path}
 import std.io.ByteBuffer
 import stdx.encoding.json.stream.*
 import std.sync.Mutex
@@ -82,6 +83,43 @@ public class OpencodeDriver <: HarnessDriver {
 
     public init(opts: OpencodeOptions) {
         this.opts = opts
+    }
+
+    // 产物：本轮改过的文件（session diff）从工作目录读出字节，交给 UHP 的 files。
+    // 只报普通文件、非删除、<= 1 MiB；路径里出现 .. 或绝对路径一律跳过。
+    private func reportArtifacts(http: OcHttp, ocSession: String, sink: TurnSink): Unit {
+        let (status, body) = http.get("/api/session/" + ocSession + "/diff")
+        if (status != UInt16(200)) {
+            return
+        }
+        let doc = match (ocParseJson(body)) {
+            case Some(o) => o
+            case None => return
+        }
+        for ((_, itemRaw) in ocJsonStrings(doc.raw("data") ?? "[]", "file")) {
+            let item = match (ocParseJson(itemRaw)) {
+                case Some(o) => o
+                case None => continue
+            }
+            let file = item.str("file") ?? ""
+            let st = item.str("status") ?? ""
+            if (file.size == 0 || st == "deleted") {
+                continue
+            }
+            if (file.startsWith("/") || file.contains("..")) {
+                continue
+            }
+            let full = this.opts.directory + "/" + file
+            try {
+                let bytes = FsFile.readFrom(Path(full))
+                if (bytes.size > 0 && bytes.size <= 1048576) {
+                    sink.producedFile(file, bytes)
+                }
+            } catch (e: Exception) {
+                // 文件不存在/不可读：忽略这一条，不把 diff 元数据当成产物
+                ()
+            }
+        }
     }
 
     public func base(): String {
@@ -272,6 +310,7 @@ public class OpencodeDriver <: HarnessDriver {
                         }
                         return TurnOutcome.Incomplete(IncompleteReason.InputRequired, None)
                     case "session.execution.succeeded" =>
+                        this.reportArtifacts(http, ocSession, sink)
                         return TurnOutcome.Completed(Some(usage))
                     case "session.execution.failed" =>
                         return TurnOutcome.Failed("harness_error", "opencode execution failed")

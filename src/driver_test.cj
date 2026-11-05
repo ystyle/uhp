@@ -4,6 +4,7 @@ package uhp_opencode
 
 import std.collection.{ArrayList, HashMap}
 import std.io.*
+import std.fs.{File as FsFile, Path, Directory}
 import stdx.encoding.json.stream.*
 import std.sync.Mutex
 import std.unittest.*
@@ -70,6 +71,14 @@ class FakeHandler <: HttpRequestHandler {
         }
         if (method == "POST" && path.endsWith("/model")) {
             ctx.responseBuilder.status(UInt16(200)).header("content-type", "application/json").body("{}")
+            return
+        }
+        if (method == "GET" && path.endsWith("/diff")) {
+            var body = "{" + ocJsonQuote("data") + ":[{" + ocJsonQuote("file") + ":" + ocJsonQuote("out.txt") +
+                "," + ocJsonQuote("patch") + ":" + ocJsonQuote("+artifact-ok") +
+                "," + ocJsonQuote("additions") + ":1," + ocJsonQuote("deletions") + ":0" +
+                "," + ocJsonQuote("status") + ":" + ocJsonQuote("added") + "}]}"
+            ctx.responseBuilder.status(UInt16(200)).header("content-type", "application/json").body(body)
             return
         }
         if (method == "POST" && path.endsWith("/prompt")) {
@@ -451,8 +460,10 @@ class RecordingSink <: TurnSink {
         return "inreq_test"
     }
 
+    public var produced: ArrayList<(String, String)> = ArrayList<(String, String)>()
+
     public func producedFile(filename: String, content: Array<UInt8>): Unit {
-        ()
+        this.produced.add((filename, String.fromUtf8(content)))
     }
 }
 
@@ -687,4 +698,122 @@ func input_files_are_sent_to_opencode(): Unit {
         case None => @Expect(false, true)
     }
     server.close()
+}
+
+
+@Test
+func changed_files_become_uhp_artifacts(): Unit {
+    let dir = "/tmp/uhp-oc-art-" + nowMillis().toString()
+    Directory.create(Path(dir), recursive: true)
+    FsFile.writeTo(Path(dir + "/out.txt"), "artifact-ok".toArray())
+    let (server, _) = startFake("happy")
+    let opts = OpencodeOptions("http://127.0.0.1:" + waitPort(server).toString(), dir, password: "x")
+    let driver = OpencodeDriver(opts)
+    let sink = RecordingSink()
+    let outcome = driver.run(TurnContext("uhp-art", "write a file", "m"), sink, CancelToken())
+    var completed = false
+    match (outcome) {
+        case TurnOutcome.Completed(_) => completed = true
+        case _ => ()
+    }
+    @Expect(completed, true)
+    @Expect(sink.produced.size, 1)
+    let f0 = sink.produced[0]
+    @Expect(f0[0], "out.txt")
+    @Expect(f0[1], "artifact-ok")
+    server.close()
+}
+
+
+func ocHttpGet(url: String): String {
+    let client = ClientBuilder().noProxy().readTimeout(Duration.second * 60).build()
+    try {
+        let req = HttpRequestBuilder()
+            .method("GET")
+            .url(url)
+            .header("authorization", "Bearer t")
+            .header("UHP-Version", "2026-10-19")
+            .build()
+        let rsp = client.send(req)
+        return readAllText2(rsp.body)
+    } finally {
+        client.close()
+    }
+}
+
+@Test
+func full_stack_artifact_is_listed_and_downloadable(): Unit {
+    let dir = "/tmp/uhp-oc-artfs-" + nowMillis().toString()
+    Directory.create(Path(dir), recursive: true)
+    FsFile.writeTo(Path(dir + "/out.txt"), "artifact-ok".toArray())
+    let (ocServer, _) = startFake("happy")
+    let driver = OpencodeDriver(OpencodeOptions(
+        "http://127.0.0.1:" + waitPort(ocServer).toString(), dir, password: "x"))
+    let harness = ConfiguredHarness("chrn_oc", "opencode", "opencode", "m", driver)
+    let engine = Engine([harness])
+    let tokens = HashMap<String, String>()
+    tokens["t"] = "p"
+    let uhp = UhpHttpServer(engine, Authenticator(tokens))
+    let server = ServerBuilder()
+        .addr("127.0.0.1")
+        .port(0)
+        .distributor(uhp.distributor())
+        .build()
+    let s = server
+    spawn {
+        s.serve()
+    }
+    let url = "http://127.0.0.1:" + waitPort(server).toString()
+    let first = httpJson(url + "/v1/responses",
+        "{" + ocJsonQuote("input") + ":" + ocJsonQuote("write a file") +
+        "," + ocJsonQuote("metadata") + ":{" + ocJsonQuote("harness_id") + ":" + ocJsonQuote("chrn_oc") + "}" +
+        "," + ocJsonQuote("stream") + ":false}", "t")
+    @Expect(jsonStr(first, "status"), "completed")
+    let sid = jsonStr(first, "session_id")
+    @Expect(sid.size > 0, true)
+    let listBody = ocHttpGet(url + "/v1/sessions/" + sid + "/files")
+    let fid = jsonStr(listBody, "id")
+    let cid = jsonStr(listBody, "container_id")
+    @Expect(fid.size > 0, true)
+    @Expect(cid.size > 0, true)
+    let content = ocHttpGet(url + "/v1/containers/" + cid + "/files/" + fid + "/content")
+    @Expect(content, "artifact-ok")
+    server.close()
+    ocServer.close()
+}
+
+func jsonStr(text: String, key: String): String {
+    let q = String.fromUtf8([UInt8(34)])
+    let marker = q + key + q
+    let i = match (text.indexOf(marker)) {
+        case Some(v) => v + marker.size
+        case None => return ""
+    }
+    let arr = text.toArray()
+    var j = i
+    while (j < arr.size && (arr[j] == UInt8(58) || arr[j] == UInt8(32))) {
+        j = j + 1
+    }
+    if (j >= arr.size || arr[j] != UInt8(34)) {
+        return ""
+    }
+    j = j + 1
+    var end = j
+    while (end < arr.size && arr[end] != UInt8(34)) {
+        end = end + 1
+    }
+    return String.fromUtf8(arr[j..end])
+}
+
+func readAllText2(body: InputStream): String {
+    let chunks = ArrayList<UInt8>()
+    let buf = Array<UInt8>(8192, repeat: 0)
+    while (true) {
+        let n = body.read(buf)
+        if (n <= 0) {
+            break
+        }
+        chunks.add(all: buf[0..n])
+    }
+    return String.fromUtf8(chunks.toArray())
 }
