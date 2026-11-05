@@ -12,6 +12,9 @@
 package uhp_opencode
 
 import std.collection.{ArrayList, HashMap}
+import std.convert.*
+import std.io.ByteBuffer
+import stdx.encoding.json.stream.*
 import std.sync.Mutex
 import std.time.DateTime
 import uhp.server.*
@@ -42,6 +45,31 @@ public class OpencodeOptions {
     }
 }
 
+// opencode form 的一个字段（formated form.created 的 fields[]）
+class FormFieldSpec {
+    public let key: String
+    public let fieldType: String
+    public let title: String
+    public let options: Array<(String, String)>
+
+    public init(key: String, fieldType: String, title: String, options: Array<(String, String)>) {
+        this.key = key
+        this.fieldType = fieldType
+        this.title = title
+        this.options = options
+    }
+}
+
+class PendingForm {
+    public let formId: String
+    public let fields: Array<FormFieldSpec>
+
+    public init(formId: String, fields: Array<FormFieldSpec>) {
+        this.formId = formId
+        this.fields = fields
+    }
+}
+
 public class OpencodeDriver <: HarnessDriver {
     private let opts: OpencodeOptions
     private let lock = Mutex()
@@ -49,6 +77,8 @@ public class OpencodeDriver <: HarnessDriver {
     private let sessions: HashMap<String, String> = HashMap<String, String>()
     // 等人类批准的权限请求（按 UHP 会话记）：下一轮续跑时把答案回给 opencode
     private let pendingPermissions: HashMap<String, String> = HashMap<String, String>()
+    // 等结构化回答的表单（opencode form.created）：同样在下一轮续跑时回给 opencode
+    private let pendingForms: HashMap<String, PendingForm> = HashMap<String, PendingForm>()
 
     public init(opts: OpencodeOptions) {
         this.opts = opts
@@ -98,11 +128,31 @@ public class OpencodeDriver <: HarnessDriver {
             case Some(v) => v
             case None => return TurnOutcome.Failed("harness_error", "opencode session create failed")
         }
-        // 续跑（回答问题）：把答案作为权限决定回给 opencode，然后继续读事件（不再发 prompt）
-        let answered = ctx.answers.size > 0 && this.pendingPermissions.contains(ctx.sessionId)
+        // 续跑（回答问题）：先把答案回给 opencode（form 或 permission），然后继续读事件（不再发 prompt）
         let pump = EventPump(http)
         this.waitSubscription(pump, 3000)
-        if (answered) {
+        var answered = false
+        if (ctx.answers.size > 0) {
+            match (this.pendingForms.get(ctx.sessionId)) {
+                case Some(pf) =>
+                    this.pendingForms.remove(ctx.sessionId)
+                    let body = this.formReplyJson(pf, ctx.answers[0])
+                    match (body) {
+                        case Some(b) =>
+                            let (fstatus, _) = http.post(
+                                "/api/session/" + ocSession + "/form/" + pf.formId + "/reply", b)
+                            if (fstatus != UInt16(204) && fstatus != UInt16(200)) {
+                                return TurnOutcome.Failed("harness_error",
+                                    "opencode form reply HTTP " + fstatus.toString())
+                            }
+                            answered = true
+                        case None =>
+                            return TurnOutcome.Failed("harness_error", "bad form answer")
+                    }
+                case None => ()
+            }
+        }
+        if (ctx.answers.size > 0 && !answered && this.pendingPermissions.contains(ctx.sessionId)) {
             let permId = this.pendingPermissions[ctx.sessionId]
             this.pendingPermissions.remove(ctx.sessionId)
             let decision = ctx.answers[0]
@@ -173,6 +223,37 @@ public class OpencodeDriver <: HarnessDriver {
                         this.fillUsage(usage, payload.raw("tokens"))
                     case "session.step.ended" =>
                         this.fillUsage(usage, payload.raw("tokens"))
+                    case "form.created" =>
+                        // 结构化提问：单字段映射成 UHP 的 kind；多字段要求回一个 JSON 对象
+                        let formId = payload.str("id") ?? ""
+                        let title = payload.str("title") ?? "Question"
+                        let specs = this.parseFormFields(payload.raw("fields") ?? "[]")
+                        if (specs.size == 0) {
+                            return TurnOutcome.Failed("harness_error", "opencode form without fields")
+                        }
+                        if (specs.size == 1) {
+                            let f = specs[0]
+                            if (f.fieldType == "string" && f.options.size > 0) {
+                                let _ = sink.ask("choice", f.title, f.options)
+                            } else if (f.fieldType == "boolean") {
+                                let _ = sink.ask("confirm", f.title,
+                                    [("true", "Yes"), ("false", "No")])
+                            } else {
+                                let _ = sink.ask("free_text", f.title, Array<(String, String)>())
+                            }
+                        } else {
+                            var keys = ""
+                            for (f in specs) {
+                                keys = if (keys.size == 0) { f.key } else { keys + ", " + f.key }
+                            }
+                            let _ = sink.ask("free_text",
+                                title + " (reply a JSON object with keys: " + keys + ")",
+                                Array<(String, String)>())
+                        }
+                        if (formId.size > 0) {
+                            this.pendingForms[ctx.sessionId] = PendingForm(formId, specs)
+                        }
+                        return TurnOutcome.Incomplete(IncompleteReason.InputRequired, None)
                     case "permission.asked" =>
                         // opencode 在等工具批准：把它变成 UHP 的 input_request，本轮结束
                         let permId = payload.str("id") ?? ""
@@ -219,6 +300,80 @@ public class OpencodeDriver <: HarnessDriver {
             sleep(Duration.millisecond * 20)
         }
         return TurnOutcome.Failed("harness_error", "unreachable")
+    }
+
+    private func parseFormFields(fieldsRaw: String): Array<FormFieldSpec> {
+        let out = ArrayList<FormFieldSpec>()
+        for (obj in ocJsonObjects(fieldsRaw)) {
+            match (ocParseJson(obj)) {
+                case Some(o) =>
+                    let key = o.str("key") ?? ""
+                    let t = o.str("type") ?? "string"
+                    let title = o.str("title") ?? key
+                    let options = ArrayList<(String, String)>()
+                    for (optObj in ocJsonObjects(o.raw("options") ?? "[]")) {
+                        match (ocParseJson(optObj)) {
+                            case Some(oo) =>
+                                let value = oo.str("value") ?? ""
+                                let label = oo.str("label") ?? value
+                                if (value.size > 0) {
+                                    options.add((value, label))
+                                }
+                            case None => ()
+                        }
+                    }
+                    if (key.size > 0) {
+                        out.add(FormFieldSpec(key, t, title, options.toArray()))
+                    }
+                case None => ()
+            }
+        }
+        return out.toArray()
+    }
+
+    private func formReplyJson(pf: PendingForm, answer: String): Option<String> {
+        let out = ByteBuffer()
+        let w = JsonWriter(out)
+        w.startObject()
+        w.writeName("answer")
+        if (pf.fields.size == 1) {
+            let f = pf.fields[0]
+            w.startObject()
+            w.writeName(f.key)
+            if (f.fieldType == "boolean") {
+                if (answer == "true" || answer == "false") {
+                    w.jsonValue(answer)
+                } else {
+                    w.writeValue(answer)
+                }
+            } else if (f.fieldType == "integer" || f.fieldType == "number") {
+                match (Int64.tryParse(answer)) {
+                    case Some(_) => w.jsonValue(answer)
+                    case None => w.writeValue(answer)
+                }
+            } else if (f.fieldType == "multiselect") {
+                w.startArray()
+                for (part in answer.split(",")) {
+                    let v = part.trimAscii()
+                    if (v.size > 0) {
+                        w.writeValue(v)
+                    }
+                }
+                w.endArray()
+            } else {
+                w.writeValue(answer)
+            }
+            w.endObject()
+        } else {
+            // 多字段：答案是 JSON 对象原文
+            match (ocParseJson(answer)) {
+                case Some(_) => w.jsonValue(answer)
+                case None => return None
+            }
+        }
+        w.endObject()
+        w.flush()
+        return Some(String.fromUtf8(out.bytes()))
     }
 
     // 建/复用 opencode 会话

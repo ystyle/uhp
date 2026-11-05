@@ -126,3 +126,23 @@ public func jsonObjectOf(pairs: Array<(String, String)>): String {
     w.flush()
     return String.fromUtf8(out.bytes())
 }
+
+// 取 JSON 数组里每个对象的原文（form 的 fields、permission 的 resources 之类）
+public func ocJsonObjects(arrayJson: String): Array<String> {
+    let out = ArrayList<String>()
+    try {
+        let r = JsonReader(ByteBuffer(arrayJson.toArray()))
+        r.startArray()
+        while (true) {
+            match (r.peek()) {
+                case Some(JsonToken.EndArray) => break
+                case Some(JsonToken.BeginObject) => out.add(String.fromUtf8(r.readValueBytes()))
+                case _ => r.skip()
+            }
+        }
+        r.endArray()
+    } catch (e: Exception) {
+        ()
+    }
+    return out.toArray()
+}

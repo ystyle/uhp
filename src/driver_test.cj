@@ -20,6 +20,7 @@ class FakeState {
     public var interrupted: Bool = false
     public var sessions: Int64 = 0
     public var permissionReplied: Option<String> = None
+    public var formReplied: Option<String> = None
 }
 
 const SID: String = "ocses_test_1"
@@ -96,6 +97,14 @@ class FakeHandler <: HttpRequestHandler {
             ctx.responseBuilder.status(UInt16(204))
             return
         }
+        if (method == "POST" && path.contains("/form/") && path.endsWith("/reply")) {
+            let body = ocReadAllText(ctx.request.body)
+            synchronized(this.state.lock) {
+                this.state.formReplied = Some(body)
+            }
+            ctx.responseBuilder.status(UInt16(204))
+            return
+        }
         if (method == "GET" && path == "/api/event") {
             this.streamEvents(ctx)
             return
@@ -130,6 +139,30 @@ class FakeHandler <: HttpRequestHandler {
         let sidJson = "{\"sessionID\":" + ocJsonQuote(SID) + "}"
         if (this.mode == "fail") {
             this.emit(w, "session.execution.failed", sidJson)
+            return
+        }
+        if (this.mode == "form" || this.mode == "formtext") {
+            this.emit(w, "form.created", formCreatedJson(this.mode == "form"))
+            let deadline3 = nowMillis() + 10000
+            var replied = false
+            while (nowMillis() < deadline3) {
+                let r3 = synchronized(this.state.lock) {
+                    this.state.formReplied
+                }
+                match (r3) {
+                    case Some(_) =>
+                        replied = true
+                        break
+                    case None => ()
+                }
+                sleep(Duration.millisecond * 10)
+            }
+            if (!replied) {
+                this.emit(w, "session.execution.failed", sidJson)
+                return
+            }
+            this.emit(w, "session.text.delta", textDeltaJson("form answered"))
+            this.emit(w, "session.execution.succeeded", sidJson)
             return
         }
         if (this.mode == "permission") {
@@ -185,6 +218,39 @@ class FakeHandler <: HttpRequestHandler {
             "{\"sessionID\":" + ocJsonQuote(SID) + ",\"tokens\":{\"input\":10,\"output\":2,\"reasoning\":1,\"cache\":{\"read\":5,\"write\":0}}}")
         this.emit(w, "session.execution.succeeded", sidJson)
     }
+}
+
+func formCreatedJson(withOptions: Bool): String {
+    let out = ByteBuffer()
+    let w = JsonWriter(out)
+    w.startObject()
+    w.writeName("sessionID").writeValue(SID)
+    w.writeName("id").writeValue("frm_1")
+    w.writeName("title").writeValue(if (withOptions) { "Pick a size" } else { "Your name" })
+    w.writeName("fields")
+    w.startArray()
+    w.startObject()
+    w.writeName("key").writeValue(if (withOptions) { "size" } else { "name" })
+    w.writeName("type").writeValue("string")
+    w.writeName("title").writeValue(if (withOptions) { "Pick a size" } else { "Your name" })
+    if (withOptions) {
+        w.writeName("options")
+        w.startArray()
+        w.startObject()
+        w.writeName("value").writeValue("s")
+        w.writeName("label").writeValue("Small")
+        w.endObject()
+        w.startObject()
+        w.writeName("value").writeValue("l")
+        w.writeName("label").writeValue("Large")
+        w.endObject()
+        w.endArray()
+    }
+    w.endObject()
+    w.endArray()
+    w.endObject()
+    w.flush()
+    return String.fromUtf8(out.bytes())
 }
 
 func permissionAskedJson(): String {
@@ -526,4 +592,66 @@ func full_stack_question_flows_through_uhp_server(): Unit {
     @Expect(second.contains("decided once"), true)
     server.close()
     ocServer.close()
+}
+
+
+@Test
+func form_choice_becomes_input_request(): Unit {
+    let (server, state) = startFake("form")
+    let driver = OpencodeDriver(optionsFor(server))
+    let sink1 = RecordingSink()
+    let first = driver.run(TurnContext("uhp-form", "ask", "m"), sink1, CancelToken())
+    var incomplete = false
+    match (first) {
+        case TurnOutcome.Incomplete(_, _) => incomplete = true
+        case _ => ()
+    }
+    @Expect(incomplete, true)
+    @Expect(sink1.asks.size, 1)
+    let ask1 = sink1.asks[0]
+    @Expect(ask1[0], "choice")
+    @Expect(ask1[2].size, 2)
+    let sink2 = RecordingSink()
+    let second = driver.run(TurnContext("uhp-form", "", "m", answers: ["l"]), sink2, CancelToken())
+    var completed = false
+    match (second) {
+        case TurnOutcome.Completed(_) => completed = true
+        case _ => ()
+    }
+    @Expect(completed, true)
+    let reply = synchronized(state.lock) {
+        state.formReplied
+    }
+    match (reply) {
+        case Some(body) => @Expect(body.contains(ocJsonQuote("size") + ":" + ocJsonQuote("l")), true)
+        case None => @Expect(false, true)
+    }
+    server.close()
+}
+
+@Test
+func form_text_becomes_free_text(): Unit {
+    let (server, state) = startFake("formtext")
+    let driver = OpencodeDriver(optionsFor(server))
+    let sink1 = RecordingSink()
+    let _ = driver.run(TurnContext("uhp-form2", "ask", "m"), sink1, CancelToken())
+    @Expect(sink1.asks.size, 1)
+    let ask1 = sink1.asks[0]
+    @Expect(ask1[0], "free_text")
+    let sink2 = RecordingSink()
+    let second = driver.run(TurnContext("uhp-form2", "", "m", answers: ["Ada"]), sink2, CancelToken())
+    var completed = false
+    match (second) {
+        case TurnOutcome.Completed(_) => completed = true
+        case _ => ()
+    }
+    @Expect(completed, true)
+    let reply = synchronized(state.lock) {
+        state.formReplied
+    }
+    match (reply) {
+        case Some(body) => @Expect(body.contains(ocJsonQuote("name") + ":" + ocJsonQuote("Ada")), true)
+        case None => @Expect(false, true)
+    }
+    server.close()
 }
