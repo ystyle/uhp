@@ -83,6 +83,22 @@ func messageFor(code: String): String {
     }
 }
 
+// 请求里的文件引用：内联数据（data URL 解出的字节）或已上传文件 id
+public class TaskFileRef {
+    public let filename: String
+    public let mediaType: String
+    public let bytes: Option<Array<UInt8>>
+    public let fileId: Option<String>
+
+    public init(filename: String, mediaType: String, bytes!: Option<Array<UInt8>> = None,
+                fileId!: Option<String> = None) {
+        this.filename = filename
+        this.mediaType = mediaType
+        this.bytes = bytes
+        this.fileId = fileId
+    }
+}
+
 public class TaskRequest {
     public let input: String
     public let model: Option<String>
@@ -99,11 +115,14 @@ public class TaskRequest {
     public let maxStep: Option<Int64>
     // metadata.environment：本任务在哪个环境里跑（§5/§6）
     public let environment: Option<String>
+    // 输入文件：内联字节或已上传文件 id（engine 在开任务前解析成 TurnFile）
+    public let files: Array<TaskFileRef>
 
     public init(input: String, model!: Option<String> = None, harnessId!: Option<String> = None,
                 previousResponseId!: Option<String> = None, background!: Bool = false,
                 ignoredFields!: Array<String> = [], inputResponse!: Option<(String, String)> = None,
-                maxStep!: Option<Int64> = None, environment!: Option<String> = None) {
+                maxStep!: Option<Int64> = None, environment!: Option<String> = None,
+                files!: Array<TaskFileRef> = []) {
         this.input = input
         this.model = model
         this.harnessId = harnessId
@@ -113,6 +132,7 @@ public class TaskRequest {
         this.inputResponse = inputResponse
         this.maxStep = maxStep
         this.environment = environment
+        this.files = files
     }
 }
 
@@ -397,6 +417,25 @@ public class Engine {
                 Some(env.mount)
             case None => None
         }
+        // 输入文件：内联字节直接用；file_id 从已上传文件表解析（跨 principal 一律当不存在）
+        let turnFiles = ArrayList<TurnFile>()
+        for (fref in req.files) {
+            match (fref.bytes) {
+                case Some(b) => turnFiles.add(TurnFile(fref.filename, fref.mediaType, b))
+                case None => match (fref.fileId) {
+                    case Some(fid) => match (this.files.get(fid)) {
+                        case Some(stored) =>
+                            if (stored.owner == p.name) {
+                                let name = if (fref.filename.size > 0) { fref.filename } else { stored.filename }
+                                let mt = if (fref.mediaType.size > 0) { fref.mediaType } else { stored.contentType() }
+                                turnFiles.add(TurnFile(name, mt, stored.bytes))
+                            }
+                        case None => ()
+                    }
+                    case None => ()
+                }
+            }
+        }
         if (!session.tryBegin(responseId)) {
             throw EngineError("session_busy", UInt16(409))
         }
@@ -449,14 +488,16 @@ public class Engine {
         // 校验（harness/session/scope）已经在锁内完成，所以 4xx 能赶在响应头之前返回。
         let sink = EngineSink(channel, this.idSource)
         spawn {
-            this.executeTask(harness, req, sessionId, resp, channel, sink, envId, envMount)
+            this.executeTask(harness, req, sessionId, resp, channel, sink, envId, envMount,
+                turnFiles.toArray())
         }
         return TaskResult(resp, channel)
     }
 
     private func executeTask(harness: ConfiguredHarness, req: TaskRequest, sessionId: String,
                              resp: Response, channel: EventChannel, sink: EngineSink,
-                             envId: Option<String>, envMount: Option<String>): Unit {
+                             envId: Option<String>, envMount: Option<String>,
+                             turnFiles: Array<TurnFile>): Unit {
         let outcome = try {
             let mcpServers = match (this.harnessRecords.get(harness.id)) {
                 case Some(rec) => composedMcpServers(rec)
@@ -468,7 +509,7 @@ public class Engine {
             }
             harness.driver.run(TurnContext(sessionId, req.input, resp.model, maxStep: req.maxStep,
                 mcpServers: mcpServers, answers: answers, environment: envId,
-                environmentMount: envMount), sink, CancelToken())
+                environmentMount: envMount, files: turnFiles), sink, CancelToken())
         } catch (e: Exception) {
             // driver 抛异常 = failed(harness_error)，绝不允许吞成 completed
             TurnOutcome.Failed("harness_error", "harness failed")

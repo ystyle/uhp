@@ -629,7 +629,8 @@ public class UhpHttpServer {
         let req = TaskRequest(parsed.input, model: parsed.model, harnessId: parsed.harnessId,
             previousResponseId: parsed.previousResponseId, background: parsed.background,
             ignoredFields: parsed.ignored.toArray(), inputResponse: parsed.inputResponse,
-            maxStep: parsed.maxStep, environment: parsed.environment)
+            maxStep: parsed.maxStep, environment: parsed.environment,
+            files: parsed.files.toArray())
         if (parsed.stream) {
             // 流式：立刻建流，事件边产生边发（不能等任务跑完再一把刷，套件 S-09 会抓）
             let started = this.engine.startTask(principal, req)
@@ -771,6 +772,8 @@ public class ParsedTaskRequest {
     public var inputResponse: Option<(String, String)> = None
     public var maxStep: Option<Int64> = None
     public var environment: Option<String> = None
+    // 输入里的 input_file 部分（内联 data URL 或已上传的 file_id）
+    public var files: ArrayList<TaskFileRef> = ArrayList<TaskFileRef>()
 }
 
 func parseTaskRequest(body: String): ParsedTaskRequest {
@@ -835,7 +838,7 @@ func readInput(r: JsonReader, out: ParsedTaskRequest): String {
                             }
                         } else {
                             let rr = JsonReader(ByteBuffer(raw.toArray()))
-                            let text = readItemText(rr)
+                            let text = readItemText(rr, out)
                             if (text.size > 0) {
                                 parts.add(text)
                             }
@@ -852,7 +855,7 @@ func readInput(r: JsonReader, out: ParsedTaskRequest): String {
     }
 }
 
-func readItemText(r: JsonReader): String {
+func readItemText(r: JsonReader, out: ParsedTaskRequest): String {
     var found = ""
     r.startObject()
     while (true) {
@@ -872,9 +875,18 @@ func readItemText(r: JsonReader): String {
                             match (r.peek()) {
                                 case Some(JsonToken.EndArray) => break
                                 case Some(JsonToken.BeginObject) =>
-                                    let t = readPartText(r)
-                                    if (t.size > 0) {
-                                        found = if (found.size == 0) { t } else { found + t }
+                                    let rawPart = String.fromUtf8(r.readValueBytes())
+                                    if (rawPart.contains("\"input_file\"")) {
+                                        match (parseFilePart(rawPart)) {
+                                            case Some(f) => out.files.add(f)
+                                            case None => ()
+                                        }
+                                    } else {
+                                        let pr = JsonReader(ByteBuffer(rawPart.toArray()))
+                                        let t = readPartText(pr)
+                                        if (t.size > 0) {
+                                            found = if (found.size == 0) { t } else { found + t }
+                                        }
                                     }
                                 case _ => r.skip()
                             }
@@ -907,6 +919,40 @@ func readPartText(r: JsonReader): String {
     }
     r.endObject()
     return text
+}
+
+// 解析 input_file part：file_data 是 data URL（data:<mime>;base64,<data>）或 file_id 引用
+func parseFilePart(raw: String): Option<TaskFileRef> {
+    let o = match (tryParseJsonObject(raw)) {
+        case Some(v) => v
+        case None => return None
+    }
+    let filename = o.str("filename") ?? ""
+    var mediaType = o.str("media_type") ?? ""
+    match (o.str("file_data")) {
+        case Some(dataUrl) =>
+            let marker = ";base64,"
+            let idx = match (dataUrl.indexOf(marker)) {
+                case Some(v) => v
+                case None => return None
+            }
+            let head = dataUrl[0..idx]
+            if (mediaType.size == 0) {
+                mediaType = if (head.startsWith("data:")) { head[5..head.size] } else { "application/octet-stream" }
+            }
+            let encoded = dataUrl[idx + marker.size..dataUrl.size]
+            return Some(TaskFileRef(filename, mediaType, bytes: Some(decodeBase64(encoded))))
+        case None => ()
+    }
+    match (o.str("file_id")) {
+        case Some(fid) => return Some(TaskFileRef(filename, mediaType, fileId: Some(fid)))
+        case None => ()
+    }
+    match (o.str("file")) {
+        case Some(fid) => return Some(TaskFileRef(filename, mediaType, fileId: Some(fid)))
+        case None => ()
+    }
+    return None
 }
 
 func readTaskMetadata(r: JsonReader, out: ParsedTaskRequest): Unit {

@@ -48,6 +48,19 @@ public class CancelToken {
     }
 }
 
+// 随任务一起交给 driver 的文件（内联 file_data 或引用已上传的 file_id，都在 SDK 里解析成字节）
+public class TurnFile {
+    public let filename: String
+    public let mediaType: String
+    public let bytes: Array<UInt8>
+
+    public init(filename: String, mediaType: String, bytes: Array<UInt8>) {
+        this.filename = filename
+        this.mediaType = mediaType
+        this.bytes = bytes
+    }
+}
+
 public class TurnContext {
     public let sessionId: String
     public let input: String
@@ -61,10 +74,13 @@ public class TurnContext {
     // 本轮所在环境（Environments §6）：id + 只读 mount 路径，driver 自己决定怎么用
     public let environment: Option<String>
     public let environmentMount: Option<String>
+    // 本次任务的输入文件（driver 自己决定怎么交给 agent）
+    public let files: Array<TurnFile>
 
     public init(sessionId: String, input: String, model: String, maxStep!: Option<Int64> = None,
                 mcpServers!: Array<String> = [], answers!: Array<String> = [],
-                environment!: Option<String> = None, environmentMount!: Option<String> = None) {
+                environment!: Option<String> = None, environmentMount!: Option<String> = None,
+                files!: Array<TurnFile> = []) {
         this.sessionId = sessionId
         this.input = input
         this.model = model
@@ -73,6 +89,7 @@ public class TurnContext {
         this.answers = answers
         this.environment = environment
         this.environmentMount = environmentMount
+        this.files = files
     }
 }
 
