@@ -22,8 +22,10 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SPEC = os.path.join(ROOT, "resources", "schema", "uhp-2026-10-19.schema.json")
 OUT = os.path.join(ROOT, "src", "types", "generated")
 
-# 由手写层负责、生成器必须跳过的定义
-SKIP = {"Capabilities"}
+# 由手写层负责、生成器必须跳过的定义：
+#  * Capabilities：schema 无法表达「16 个 bool 必须全写 / 缺省 false」的语义（见 AGENTS.md 例外）
+#  * Event：schema 里没有 discriminated union，手写层 UhpEvent 独占（18 变体 + Unknown）
+SKIP = {"Capabilities", "Event"}
 
 # 依赖的公共类型（手写块，位于 uhp.types.handwritten）
 EXTERNAL = set()
@@ -277,6 +279,8 @@ class Gen:
         # 先把 inline 类提交（它们在 emit_class 内部递归产生），再落盘
         files = {}
         for fname, lines in self.out.items():
+            if not lines:
+                continue  # 跳过只有 SKIP 定义的家族，避免生成空文件
             files[fname] = HEADER + "\n".join(lines)
         return files
 

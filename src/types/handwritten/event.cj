@@ -201,8 +201,10 @@ public class StreamErrorEvent {
     // 比让整条流抛异常更划算；消费方本来就要对未知 code 做兜底（VERSIONING 第 4 条）。
     public var code: String = ""
     public var message: String = ""
-    // param 是 ["string","null"]：null 与缺失等价（都不指向具体字段），两者都落到 None、
-    // 回写时不输出。这是本文件唯一的非逐字节行为，已写进契约与测试。
+    // param 是 ["string","null"]，且 schema 里 Event 只 required type / sequence_number，
+    // 所以「键不存在」与「值为 null」对接收方语义相同：两者都落到 None、回写时不输出。
+    // 这是本文件唯一的非逐字节行为，已写进契约与测试。与 generated/Event 的
+    // param: Option<Raw> 约定一致（那边同样把 null 折成 None）。
     public var param: Option<String> = None
     public var extras: Extras = newExtras()
 
@@ -262,7 +264,7 @@ public enum UhpEvent <: JsonSerializable & JsonDeserializable<UhpEvent> {
     // 事件都很小，这点开销换「未知事件不丢数据」是值得的。
     public static func fromJson(r: JsonReader): UhpEvent {
         let rawBytes = r.readValueBytes()
-        let raw = String.fromUtf8(rawBytes)
+        let raw: Raw = String.fromUtf8(rawBytes)
         let fields = EventFields()
         let inner = JsonReader(ByteBuffer(rawBytes))
         fromJsonObjectWithExtras(inner, eventHandlers(inner, fields), fields.extras)
@@ -503,7 +505,7 @@ func startEvent(w: JsonWriter, t: String, seq: Int64): Unit {
     w.writeName("sequence_number").writeValue(seq)
 }
 
-// 子对象字段：值本来就是合法 JSON 文本，用 jsonValue 原样写。
+// 子对象字段：值本来就是合法 JSON 文本，用 codec 的 writeRaw（内部走 JsonWriter.jsonValue）原样写。
 // 若改用 writeValue 会被当成字符串再编码一次（变成带引号的文本），形状就变了。
 func writeRawField(w: JsonWriter, name: String, v: Option<Raw>): Unit {
     match (v) {
