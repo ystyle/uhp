@@ -16,7 +16,7 @@ UHP 定义「产品如何通过 HTTP 驱动一个完整的 agent harness」：�
 
 ## 当前状态
 
-**M0/M1/M2 已完成；官方一致性套件 core + extended 两类全过。** 明确区分「已经能用」与「还没写」：
+**M0/M1/M2 已完成；官方一致性套件 core/extended 全过，full 类 conformant-with-skips。** 明确区分「已经能用」与「还没写」：
 
 | 部分 | 状态 | 说明 |
 |---|---|---|
@@ -29,11 +29,13 @@ UHP 定义「产品如何通过 HTTP 驱动一个完整的 agent harness」：�
 | 服务端（引擎 + HTTP 层 + HarnessDriver） | ✅ | 路由/鉴权/版本/状态机/事件通道/能力门控/SSE |
 | **官方一致性套件 core** | ✅ **41/41** | 报告：`docs/conformance/2026.10.19.post5-core.json`（suite 2026.10.19.post5） |
 | **官方一致性套件 extended** | ✅ **50/50** | 报告：`docs/conformance/2026.10.19.post5-extended.json` |
-| full 类 | ❌ 未开始 | harness 管理（含退役/幂等）、会话分享/删除 |
-| environments / plugins / memories | ❌ 未开始 | 三个章级可选能力 |
+| **官方一致性套件 full** | ⚠️ **60 pass / 0 fail / 44 skip** | harness 管理全过；skip 全是未实现的可选能力。报告：`docs/conformance/2026.10.19.post5-full.json` |
+| 会话分享（R 组） | ❌ 未开始 | `POST/GET/DELETE /v1/sessions/{id}/share` 与只读视图 |
+| plugins（P 组） | ❌ 未开始 | Agent Plugins 包校验、派生态、组合、导出 |
+| environments / memories | ❌ 未开始 | 两个章级可选能力 |
 
-> 现在能用：`UhpClient` 对接任意 UHP 服务端；`UhpHttpServer` + `HarnessDriver` 起一个通过 core + extended 两类一致性检查的 UHP 服务端（含文件上传/产物下载、会话列举与 turns）。
-> 还没有：harness 管理（full）、会话分享/删除、三个章级可选能力（environments / plugins / memories）。
+> 现在能用：`UhpClient` 对接任意 UHP 服务端；`UhpHttpServer` + `HarnessDriver` 起一个通过 core + extended 全部检查、full 类必做检查全过的 UHP 服务端（含 harness 增删改、技能包、文件上传/产物下载、会话列举与删除）。
+> 还没有：会话分享（R）、plugins（P）、environments、memories、input_requests（T-13/T-14）。
 
 ## 目录
 
