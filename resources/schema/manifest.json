@@ -1,0 +1,24 @@
+{
+  "$comment": "UHP 上游制品清单。制品原样拷贝、不可修改；sha256 与上游发布值绑定，是「我实现的是 2026-10-19」这句话的可校验依据。校验入口：tools/check_schema_sync.py（CI 必跑）。",
+  "protocol_version": "2026-10-19",
+  "spec_page": "https://unifiedharnessprotocol.org/spec/2026-10-19",
+  "fetched_at": "2026-11-05",
+  "artifacts": [
+    {
+      "path": "uhp-2026-10-19.openapi.yaml",
+      "source_url": "https://unifiedharnessprotocol.org/schema/uhp-2026-10-19.openapi.yaml",
+      "sha256": "2ab33754fb5319f16b26cb6366b340dac9a5ca8d9bb5252aeea0f1181f0109f6",
+      "bytes": 129697,
+      "lines": 3273,
+      "role": "结构权威（端点、参数、匿名信封）；类型生成器的唯一输入"
+    },
+    {
+      "path": "uhp-2026-10-19.schema.json",
+      "source_url": "https://unifiedharnessprotocol.org/schema/uhp-2026-10-19.schema.json",
+      "sha256": "2a5f6192c50909c8e8689f666fbeb324829d5df9c9b3d67255614a5fa760dcd7",
+      "bytes": 95713,
+      "lines": 3611,
+      "role": "结构权威（92 个 $defs 对象定义）；只做交叉校验与测试 oracle，不含端点"
+    }
+  ]
+}

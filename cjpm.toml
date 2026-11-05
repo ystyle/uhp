@@ -1,0 +1,33 @@
+[dependencies]
+
+[package]
+  cjc-version = "1.2.0"
+  compile-option = "-Woff unused"
+  description = "UHP (Unified Harness Protocol) 仓颉 SDK：协议类型层 + 客户端 + 服务端骨架"
+  # stdx.net.http 的 TLS 路径需要 digest（SHA-256），cjpm 的依赖推导不会自动带上，
+  # 缺失会在最终链接阶段报 undefined reference。
+  link-option = "-lstdx.crypto.digest"
+  name = "uhp"
+  output-type = "static"
+  version = "0.1.0"
+  license = ["MulanPSL-2.0"]
+  authors = ["ystyle"]
+  repository = "https://atomgit.com/ystyle/uhp-cj"
+  # 制品清单：只带源码与许可。include 一律锚定（未锚定会连带 example/src、tests/src）。
+  include = ["/src", "/LICENSE"]
+  exclude = ["/docs", "/tools", "/resources", "/scripts", "/examples", "/target"]
+
+[target.x86_64-unknown-linux-gnu.bin-dependencies]
+  path-option = ["${CANGJIE_STDX_PATH}"]
+
+[target.aarch64-unknown-linux-gnu.bin-dependencies]
+  path-option = ["${CANGJIE_STDX_PATH}"]
+
+[target.x86_64-apple-darwin.bin-dependencies]
+  path-option = ["${CANGJIE_STDX_PATH}"]
+
+[target.aarch64-apple-darwin.bin-dependencies]
+  path-option = ["${CANGJIE_STDX_PATH}"]
+
+[target.x86_64-w64-mingw32.bin-dependencies]
+  path-option = ["${CANGJIE_STDX_PATH}"]
