@@ -8,6 +8,7 @@ import stdx.encoding.json.stream.*
 import std.io.*
 import uhp.types.codec.*
 import uhp.types.handwritten.*
+import uhp.transport.*
 
 public class UhpError <: Exception {
     public let envelope: ErrorEnvelope
@@ -58,7 +59,7 @@ public class StreamGap <: Exception {
 
 // 把错误响应体解析成 UhpError。解析不出来时按 HTTP 状态给兜底封套
 // （错误体畸形不应让客户端连「失败」都表达不了）。
-public func errorFromResponse(resp: HttpResponse): UhpError {
+public func errorFromResponse(resp: UhpResponse): UhpError {
     match (parseErrorEnvelope(resp.body)) {
         case Some(env) => return UhpError(env, resp.status)
         case None =>

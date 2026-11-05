@@ -6,6 +6,7 @@ import std.unittest.*
 import std.unittest.testmacro.*
 import uhp.types.handwritten.*
 import uhp.types.generated.*
+import uhp.transport.*
 
 // ---------- 内存传输桩 ----------
 
@@ -32,12 +33,12 @@ class FakeSseStream <: SseStream {
 }
 
 class FakeTransport <: HttpTransport {
-    public var requests: ArrayList<HttpRequest> = ArrayList<HttpRequest>()
-    private var responses: ArrayList<HttpResponse> = ArrayList<HttpResponse>()
+    public var requests: ArrayList<UhpRequest> = ArrayList<UhpRequest>()
+    private var responses: ArrayList<UhpResponse> = ArrayList<UhpResponse>()
     private var streams: ArrayList<Array<String>> = ArrayList<Array<String>>()
     private var streamIdx: Int64 = 0
 
-    public init(responses: Array<HttpResponse>, streams: Array<Array<String>>) {
+    public init(responses: Array<UhpResponse>, streams: Array<Array<String>>) {
         for (r in responses) {
             this.responses.add(r)
         }
@@ -46,16 +47,16 @@ class FakeTransport <: HttpTransport {
         }
     }
 
-    public func send(req: HttpRequest): HttpResponse {
+    public func send(req: UhpRequest): UhpResponse {
         this.requests.add(req)
         return this.responses.remove(at: 0)
     }
 
-    public func stream(req: HttpRequest): SseStream {
+    public func stream(req: UhpRequest): StreamStart {
         this.requests.add(req)
         let c = this.streams[this.streamIdx]
         this.streamIdx = this.streamIdx + 1
-        return FakeSseStream(c)
+        return StreamStart.Started(FakeSseStream(c))
     }
 }
 
@@ -68,18 +69,18 @@ func headers(): HashMap<String, String> {
     return h
 }
 
-func ok(body: String): HttpResponse {
-    return HttpResponse(UInt16(200), headers(), body)
+func ok(body: String): UhpResponse {
+    return UhpResponse(UInt16(200), headers(), body)
 }
 
-func okNoVersion(body: String): HttpResponse {
+func okNoVersion(body: String): UhpResponse {
     let h = HashMap<String, String>()
     h["content-type"] = "application/json"
-    return HttpResponse(UInt16(200), h, body)
+    return UhpResponse(UInt16(200), h, body)
 }
 
-func err(status: Int64, body: String): HttpResponse {
-    return HttpResponse(UInt16(status), headers(), body)
+func err(status: Int64, body: String): UhpResponse {
+    return UhpResponse(UInt16(status), headers(), body)
 }
 
 func discoveryBody(versions: String): String {

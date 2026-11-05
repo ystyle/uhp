@@ -14,6 +14,7 @@ import std.io.*
 import uhp.types.handwritten.*
 import uhp.types.generated.*
 import uhp.types.base.*
+import uhp.transport.*
 
 // 本 SDK 能说哪些协议版本（新→旧）。版本表是运行期数据，不是编译期 feature。
 public let KNOWN_VERSIONS: Array<String> = ["2026-10-19"]
@@ -39,7 +40,7 @@ public class UhpClient {
             case Some(d) => return d
             case None => ()
         }
-        let resp = this.transport.send(HttpRequest("GET", "/v1/uhp", HashMap<String, String>(), None))
+        let resp = this.transport.send(UhpRequest("GET", "/v1/uhp", HashMap<String, String>(), None))
         if (!resp.isSuccess()) {
             throw errorFromResponse(resp)
         }
@@ -109,8 +110,10 @@ public class UhpClient {
         headers["Accept"] = "text/event-stream"
         headers["Idempotency-Key"] = key
         let body = toJsonStringOf(req)
-        let stream = this.transport.stream(HttpRequest("POST", "/v1/responses", headers, Some(body)))
-        return TaskStream(stream)
+        match (this.transport.stream(UhpRequest("POST", "/v1/responses", headers, Some(body)))) {
+            case Started(stream) => return TaskStream(stream)
+            case Failed(resp) => throw errorFromResponse(resp)
+        }
     }
 
     public func getResponse(responseId: String): Response {
@@ -140,13 +143,13 @@ public class UhpClient {
         return h
     }
 
-    private func sendAuthed(method: String, path: String, body: Option<String>, idemKey: Option<String>): HttpResponse {
+    private func sendAuthed(method: String, path: String, body: Option<String>, idemKey: Option<String>): UhpResponse {
         let headers = this.commonHeaders()
         match (idemKey) {
             case Some(k) => headers["Idempotency-Key"] = k
             case None => ()
         }
-        return this.transport.send(HttpRequest(method, path, headers, body))
+        return this.transport.send(UhpRequest(method, path, headers, body))
     }
 
     private func getJson<T>(path: String): T where T <: JsonDeserializable<T> {
@@ -172,7 +175,7 @@ public class UhpClient {
 
 // 规范要求**每个**响应（含错误）都回显 UHP-Version；缺失即协议违规，
 // 不静默接受（否则客户端无法发现自己在跟一个不守约的实现说话）。
-public func checkVersionHeader(resp: HttpResponse): Unit {
+public func checkVersionHeader(resp: UhpResponse): Unit {
     match (resp.header("UHP-Version")) {
         case Some(v) => if (v.size == 0) {
                 throw ProtocolViolation("响应带了空的 UHP-Version 头")
