@@ -1,4 +1,18 @@
-target/
+# cjpm 构建产物
+/target/
+/.cache/
+*.cjp
+
+# 日志 / 本地环境 / 调研临时产物
 *.log
 *.env
 .uhp-research/
+
+# Python 工具（tools/ 是 CI 脚本：进 git，不进制品）
+__pycache__/
+*.pyc
+
+# 编辑器 / 平台
+.vscode/
+.idea/
+.DS_Store
