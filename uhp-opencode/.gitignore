@@ -1,0 +1,6 @@
+# cjpm 构建产物
+/target/
+/.cache/
+*.cjp
+*.log
+.uhp-research/

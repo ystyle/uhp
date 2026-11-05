@@ -1,0 +1,34 @@
+[dependencies]
+  # 本仓是消费方：用 path 依赖 SDK（未发布到中心仓；发版后再改精确版本号）
+  "uhp" = { path = "../uhp-cj" }
+
+[package]
+  cjc-version = "1.2.0"
+  name = "uhp_opencode"
+  description = "opencode 2.x 的 UHP HarnessDriver 适配器（消费方代码，不是 SDK 本体）"
+  version = "0.1.0"
+  license = ["MulanPSL-2.0"]
+  authors = ["ystyle"]
+  repository = "https://atomgit.com/ystyle/uhp-opencode"
+  output-type = "static"
+  compile-option = "-Woff unused"
+  link-option = "-lstdx.crypto.digest"
+  include = ["/src", "/LICENSE"]
+  exclude = ["/docs", "/scripts", "/target"]
+
+[target.x86_64-unknown-linux-gnu.bin-dependencies]
+  path-option = ["${CANGJIE_STDX_PATH}"]
+
+[target.aarch64-unknown-linux-gnu.bin-dependencies]
+  path-option = ["${CANGJIE_STDX_PATH}"]
+
+[target.x86_64-apple-darwin.bin-dependencies]
+  path-option = ["${CANGJIE_STDX_PATH}"]
+
+[target.aarch64-apple-darwin.bin-dependencies]
+  path-option = ["${CANGJIE_STDX_PATH}"]
+
+# 示例：起一个 UHP 服务端，用 opencode 当 driver
+[package.package-configuration."uhp_opencode.examples.example"]
+  output-type = "executable"
+  compile-option = "--static"
