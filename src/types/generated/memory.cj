@@ -1031,7 +1031,11 @@ public class MemoryObserveEpisodes <: JsonSerializable & JsonDeserializable<Memo
     public init() {}
     public func toJson(w: JsonWriter): Unit {
         w.startObject()
-                w.writeName("content").jsonValue(this.content)
+        if (this.content.size > 0) {
+            w.writeName("content").jsonValue(this.content)
+        } else {
+            w.writeName("content").writeNullValue()
+        }
         if (let Some(v) <- this.time) {
                         w.writeName("time"); v.toJson(w)
         }
@@ -1808,7 +1812,11 @@ public class MemoryRecordCreate <: JsonSerializable & JsonDeserializable<MemoryR
         if (let Some(v) <- this.typeName) {
                         w.writeName("type").writeValue(v)
         }
-                w.writeName("content").jsonValue(this.content)
+        if (this.content.size > 0) {
+            w.writeName("content").jsonValue(this.content)
+        } else {
+            w.writeName("content").writeNullValue()
+        }
         if (let Some(v) <- this.attributes) {
                         w.writeName("attributes").jsonValue(v)
         }

@@ -146,7 +146,11 @@ public class CreateResponseRequest <: JsonSerializable & JsonDeserializable<Crea
     public init() {}
     public func toJson(w: JsonWriter): Unit {
         w.startObject()
-                w.writeName("input").jsonValue(this.input)
+        if (this.input.size > 0) {
+            w.writeName("input").jsonValue(this.input)
+        } else {
+            w.writeName("input").writeNullValue()
+        }
         if (let Some(v) <- this.model) {
                         w.writeName("model").writeValue(v)
         }

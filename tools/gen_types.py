@@ -200,6 +200,14 @@ class Gen:
                     lines.append("        }")
                 else:
                     lines.append("        }")
+            elif kind == "raw":
+                # 必填的自由 JSON 字段（schema 里是多分支联合，生成层不建模）：
+                # 空串表示「没有值」，必须写 null —— 直接 jsonValue("") 会产出 {"k":} 这种非法 JSON。
+                lines.append("        if (this." + cn + '.size > 0) {')
+                lines.append('            w.writeName("' + jn + '").jsonValue(this.' + cn + ")")
+                lines.append("        } else {")
+                lines.append('            w.writeName("' + jn + '").writeNullValue()')
+                lines.append("        }")
             else:
                 lines.append("        " + WRITE_SNIPPET(jn, "this." + cn, ctype, kind, 8))
         lines.append("        writeExtras(w, this.extras)")

@@ -116,6 +116,45 @@ public class UhpClient {
         }
     }
 
+    // 只带输入文本的便捷入口。
+    // 为什么不直接用生成的 CreateResponseRequest：它的 input 是「string | item[]」联合，
+    // 生成层按 Raw 处理；对任务创建没有意义（空值只能写 null）。这里按协议手写请求体。
+    public func createTaskWithInput(input: String, model!: Option<String> = None,
+                                    harnessId!: Option<String> = None,
+                                    previousResponseId!: Option<String> = None,
+                                    idempotencyKey!: Option<String> = None): Response {
+        let body = taskBody(input, model: model, harnessId: harnessId, previousResponseId: previousResponseId)
+        let key = match (idempotencyKey) {
+            case Some(k) => k
+            case None => newIdempotencyKey()
+        }
+        let resp = this.sendAuthed("POST", "/v1/responses", Some(body), Some(key))
+        if (!resp.isSuccess()) {
+            throw errorFromResponse(resp)
+        }
+        checkVersionHeader(resp)
+        return parseJson<Response>(resp.body)
+    }
+
+    public func createTaskStreamWithInput(input: String, model!: Option<String> = None,
+                                          harnessId!: Option<String> = None,
+                                          previousResponseId!: Option<String> = None,
+                                          idempotencyKey!: Option<String> = None): TaskStream {
+        let body = taskBody(input, model: model, harnessId: harnessId,
+            previousResponseId: previousResponseId, stream: true)
+        let key = match (idempotencyKey) {
+            case Some(k) => k
+            case None => newIdempotencyKey()
+        }
+        let headers = this.commonHeaders()
+        headers["Accept"] = "text/event-stream"
+        headers["Idempotency-Key"] = key
+        match (this.transport.stream(UhpRequest("POST", "/v1/responses", headers, Some(body)))) {
+            case Started(stream) => return TaskStream(stream)
+            case Failed(resp) => throw errorFromResponse(resp)
+        }
+    }
+
     public func getResponse(responseId: String): Response {
         return this.getJson<Response>("/v1/responses/" + responseId)
     }
@@ -204,6 +243,37 @@ func parseDiscovery(body: String): Discovery {
 public func parseJson<T>(body: String): T where T <: JsonDeserializable<T> {
     let r = JsonReader(ByteBuffer(body.toArray()))
     return T.fromJson(r)
+}
+
+// 任务请求体（只带协议定义的字段；未设置的字段不出现，而不是写 null）。
+func taskBody(input: String, model!: Option<String> = None, harnessId!: Option<String> = None,
+              previousResponseId!: Option<String> = None, stream!: Bool = false): String {
+    let out = ByteBuffer()
+    let w = JsonWriter(out)
+    w.startObject()
+    w.writeName("input").writeValue(input)
+    match (model) {
+        case Some(m) => w.writeName("model").writeValue(m)
+        case None => ()
+    }
+    match (previousResponseId) {
+        case Some(p) => w.writeName("previous_response_id").writeValue(p)
+        case None => ()
+    }
+    if (stream) {
+        w.writeName("stream").writeValue(true)
+    }
+    match (harnessId) {
+        case Some(h) =>
+            w.writeName("metadata")
+            w.startObject()
+            w.writeName("harness_id").writeValue(h)
+            w.endObject()
+        case None => ()
+    }
+    w.endObject()
+    w.flush()
+    return String.fromUtf8(out.bytes())
 }
 
 // 幂等键：客户端生成、跨重试复用。不需要密码学强度（服务端按 principal 作用域去重）。

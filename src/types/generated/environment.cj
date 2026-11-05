@@ -645,7 +645,11 @@ public class EnvironmentPackageCheck <: JsonSerializable & JsonDeserializable<En
                 w.writeName("manager").writeValue(this.manager)
                 w.writeName("name").writeValue(this.name)
                 w.writeName("spec").writeValue(this.spec)
-                w.writeName("exists").jsonValue(this.exists)
+        if (this.exists.size > 0) {
+            w.writeName("exists").jsonValue(this.exists)
+        } else {
+            w.writeName("exists").writeNullValue()
+        }
         if (let Some(v) <- this.latest) {
                         w.writeName("latest").writeValue(v)
         }

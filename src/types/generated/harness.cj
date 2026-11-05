@@ -436,7 +436,11 @@ public class ModelCatalog <: JsonSerializable & JsonDeserializable<ModelCatalog>
     public init() {}
     public func toJson(w: JsonWriter): Unit {
         w.startObject()
-                w.writeName("backends").jsonValue(this.backends)
+        if (this.backends.size > 0) {
+            w.writeName("backends").jsonValue(this.backends)
+        } else {
+            w.writeName("backends").writeNullValue()
+        }
         writeExtras(w, this.extras)
         w.endObject()
     }
