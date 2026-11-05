@@ -29,15 +29,15 @@ UHP 定义「产品如何通过 HTTP 驱动一个完整的 agent harness」：�
 | 服务端（引擎 + HTTP 层 + HarnessDriver） | ✅ | 路由/鉴权/版本/状态机/事件通道/能力门控/SSE |
 | **官方一致性套件 core** | ✅ **41/41** | 报告：`docs/conformance/2026.10.19.post5-core.json`（suite 2026.10.19.post5） |
 | **官方一致性套件 extended** | ✅ **50/50** | 报告：`docs/conformance/2026.10.19.post5-extended.json` |
-| **官方一致性套件 full** | ⚠️ **90 pass / 0 fail / 14 skip** | 必做检查全过；skip 只剩 memories 13 项与 EN-09（可选包检查）。报告：`docs/conformance/2026.10.19.post5-full.json` |
+| **官方一致性套件 full** | ⚠️ **101 pass / 0 fail / 3 skip** | 必做检查全过；skip = ME-10/ME-11（provider 如实声明不做图/时序事实）+ EN-09（可选包检查）。报告：`docs/conformance/2026.10.19.post5-full.json` |
 | plugins（P 组） | ✅ **11/11** | Agent Plugins 包校验/派生态/组合/导出 + 运行时 MCP 调用（SUT 内置本地 fixture） |
 | 会话分享（R 组） | ✅ **8/8** | 发布/读回/只读视图/不含凭证/吊销所有链接/删会话连带 |
 | 提问 / step 预算（T-13/T-14/T-12） | ✅ **3/3** | `ask_user` → incomplete/input_required、答案续跑、secret 不外泄、预算截断必 incomplete |
 | environments（EN 组） | ⚠️ **8/9** | 对象/文件/build/版本回滚/harness 挂载/只读挂载全过；EN-09 包检查为可选端点（未实现 → skip） |
-| memories（ME 组） | ❌ 未开始 | 13 项：树形记忆、检索、修订、遗忘/擦除、实体关系 |
+| memories（ME 组） | ⚠️ **11/13** | 树/记录/修订历史/遗忘擦除/召回/prime 全过；ME-10 图与 ME-11 时序事实按 provider 声明跳过 |
 
 > 现在能用：`UhpClient` 对接任意 UHP 服务端；`UhpHttpServer` + `HarnessDriver` 起一个通过 core + extended 全部检查、full 类必做检查全过的 UHP 服务端（含 harness 增删改、技能包、文件上传/产物下载、会话列举与删除）。
-> 还没有：memories 章，以及 environments 的可选包检查端点。
+> 还没有：实体图（ME-10）、一个属性只持一个值的时序事实（ME-11）、环境的可选包检查端点（EN-09）。
 
 ## 目录
 
