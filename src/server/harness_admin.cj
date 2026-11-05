@@ -25,6 +25,10 @@ public class HarnessRecord {
     public var mcpServersJson: Option<String> = None
     public var skills: Array<SkillRecord> = []
     public var disabledTools: Array<String> = []
+    // 插件：包原样保存，派生态每次读时重算
+    public var plugins: Array<PluginRecord> = []
+    // 写体里的插件输入（create/update 时由 engine 解析成 PluginRecord）
+    public var pluginInputs: Array<PluginInput> = []
     public var maxStep: Option<Int64> = None
     public var timeoutSeconds: Option<Int64> = None
     public let createdAt: Int64
@@ -66,6 +70,7 @@ public func parseHarnessCreate(r: JsonReader, id: String): HarnessRecord {
             case "mcp_servers" => rec.mcpServersJson = Some(String.fromUtf8(r.readValueBytes()))
             case "skills" => rec.skills = parseSkills(r)
             case "disabled_tools" => rec.disabledTools = r.readValue<Array<String>>()
+            case "plugins" => rec.pluginInputs = parsePluginInputs(r)
             case "max_step" => rec.maxStep = Some(r.readValue<Int64>())
             case "timeout_seconds" => rec.timeoutSeconds = Some(r.readValue<Int64>())
             // 只读字段：接受并忽略（否则 GET -> PUT 存不回去）
@@ -177,6 +182,8 @@ public func harnessJson(rec: HarnessRecord, baseLabel: String): String {
         w.writeValue(t)
     }
     w.endArray()
+    w.writeName("plugins")
+    w.jsonValue(pluginsJson(rec.plugins))
     match (rec.maxStep) {
         case Some(v) => w.writeName("maxStep").writeValue(v)
         case None => w.writeName("maxStep").writeNullValue()

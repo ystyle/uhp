@@ -60,13 +60,17 @@ public class UhpHttpServer {
         try {
             this.route(ctx)
         } catch (e: EngineError) {
-            let detail = match (e.code) {
+            let fromError = match (e.detailJson) {
+                case Some(d) => d
+                case None => ""
+            }
+            let detail = if (fromError.size > 0) { fromError } else { match (e.code) {
                 case "unsupported_base" => match (e.reason) {
                     case Some(r) => "{\"supported\":[" + r + "]}"
                     case None => ""
                 }
                 case _ => ""
-            }
+            } }
             this.writeErrorDetail(ctx, e.httpStatus, e.code, e.param, detail)
         } catch (e: JsonProtocolException) {
             this.writeError(ctx, UInt16(400), "invalid_input", None)
@@ -159,6 +163,15 @@ public class UhpHttpServer {
             if (seg.size == 3 && method == "DELETE") {
                 this.writeJson(ctx, UInt16(200), this.engine.deleteHarness(principal, id),
                     version: Some(usedVersion))
+                return
+            }
+            if (seg.size == 4 && seg[3] == "plugin" && method == "GET") {
+                this.writeJson(ctx, UInt16(200), this.engine.exportPlugin(id), version: Some(usedVersion))
+                return
+            }
+            if (seg.size == 6 && seg[3] == "plugins" && seg[5] == "files" && method == "GET") {
+                let pl = this.engine.pluginFiles(id, seg[4])
+                this.writeJson(ctx, UInt16(200), pluginFilesJson(pl), version: Some(usedVersion))
                 return
             }
             if (seg.size == 6 && seg[3] == "skills" && seg[5] == "files" && method == "GET") {

@@ -46,13 +46,17 @@ public class EngineError <: Exception {
     public let httpStatus: UInt16
     public let param: Option<String>
     public let reason: Option<String>
+    // 结构化 detail 的 JSON 片段（如 {"supported":[...]}）
+    public let detailJson: Option<String>
 
-    public init(code: String, httpStatus: UInt16, param!: Option<String> = None, reason!: Option<String> = None) {
+    public init(code: String, httpStatus: UInt16, param!: Option<String> = None,
+                reason!: Option<String> = None, detailJson!: Option<String> = None) {
         super(code)
         this.code = code
         this.httpStatus = httpStatus
         this.param = param
         this.reason = reason
+        this.detailJson = detailJson
     }
 
     public func toEnvelope(): ErrorEnvelope {
@@ -186,6 +190,7 @@ public class Engine {
                 caps.harnessManagement = true
                 // 创建 harness 的幂等键（F-10）：key 保留在内存里，同 key 返回第一次的结果
                 caps.harnessIdempotency = true
+                caps.plugins = true
         }
         this.capabilitiesValue = caps
     }
@@ -200,6 +205,9 @@ public class Engine {
         d.default_version = this.versions[0]
         d.conformance_class = conformanceClassName(this.cls)
         d.capabilities = this.capabilitiesValue
+        if (this.capabilitiesValue.plugins) {
+            d.plugin_schemas = Some(SUPPORTED_PLUGIN_SCHEMAS)
+        }
         let impl = DiscoveryImplementation()
         impl.name = "uhp-cj"
         impl.version = "0.1.0"
@@ -537,6 +545,8 @@ public class Engine {
                 // 对象 required 含 name，写体不强制：合成一个稳定名字
                 rec.name = rec.base + " harness"
             }
+            rec.plugins = resolvePlugins(rec.pluginInputs, [])
+            checkComposition(directServerNames(rec), directSkillNames(rec), rec.plugins)
             this.harnessRecords[id] = rec
             this.harnesses[id] = ConfiguredHarness(id, rec.name, rec.base,
                 match (rec.defaultModel) { case Some(m) => m; case None => "scripted-model" },
@@ -576,6 +586,9 @@ public class Engine {
             old.disabledTools = parsed.disabledTools
             old.maxStep = parsed.maxStep
             old.timeoutSeconds = parsed.timeoutSeconds
+            // 「不带 files 的插件条目」= 沿用已装包（PUT 往返/禁用），所以要把旧集合传进去
+            old.plugins = resolvePlugins(parsed.pluginInputs, old.plugins)
+            checkComposition(directServerNames(old), directSkillNames(old), old.plugins)
             match (this.harnesses.get(id)) {
                 case Some(h) =>
                     this.harnesses[id] = ConfiguredHarness(id, old.name, old.base,
@@ -615,6 +628,24 @@ public class Engine {
                 out.add(r)
             }
             return out.toArray()
+        }
+    }
+
+    public func pluginFiles(id: String, pluginName: String): PluginRecord {
+        synchronized(this.lock) {
+            let rec = this.harnessRecord(id)
+            for (p in rec.plugins) {
+                if (p.name == pluginName) {
+                    return p
+                }
+            }
+            throw EngineError("plugin_not_found", UInt16(404))
+        }
+    }
+
+    public func exportPlugin(id: String): String {
+        synchronized(this.lock) {
+            return exportPluginJson(this.harnessRecord(id))
         }
     }
 
