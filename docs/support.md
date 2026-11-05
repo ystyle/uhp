@@ -135,15 +135,64 @@
    套件 ME-09 因此走「media=text/*」分支（文件上传 500 → 该项按文本路径判定），我们**没有假装支持二进制**。
 2. **存储全内存**：进程重启即丢。接缝在 `Engine`，落盘是宿主选择。
 3. **环境 mount 在 `<cwd>/.uhp-envs/`**：生产部署应换成持久卷并只读挂载。
-4. **插件运行时 MCP 调用依赖 driver**：SUT 内置本地 fixture；真实 base 由适配器实现（opencode 2.x 待接）。
+4. **插件运行时 MCP 调用依赖 driver**：SUT 内置本地 fixture；真实 base 由消费方适配器实现（见 §6）。
 
 ## 5. 怎么验证这张表
 
 ```bash
-bash scripts/test.sh                    # 139 条单测/行为测试
+bash scripts/test.sh                    # 142 条单测/行为测试
 bash scripts/conformance.sh core        # 41/41
 bash scripts/conformance.sh extended    # 50/50
 bash scripts/conformance.sh full        # 104/104
 ```
 
 报告落在 `docs/conformance/<suite_version>-<class>.json`；**失败也会落盘**。
+
+## 6. 端到端能力矩阵（SDK + 两个适配器）
+
+适配器是消费方仓，不在本仓内：[uhp-opencode](../uhp-opencode)（opencode 2.x）、[uhp-acp](../uhp-acp)（ACP 通用，覆盖 dsh / pi / claude-code 这类 agent）。
+本列「SDK 接缝」指 SDK 提供的接口；「opencode / ACP」列指真的映射到了该 agent 的事件/API。
+
+| 能力 | SDK 接缝 | opencode 2.x | ACP 通用 | 证据 |
+|---|---|---|---|---|
+| 文本流 | TurnSink.textDelta | ✅ session.text.delta | ✅ agent_message_chunk | 两仓单测 |
+| 推理流 | TurnSink.reasoningDelta | ✅ session.reasoning.delta | ✅ agent_thought_chunk | 两仓单测 |
+| 工具调用 / 结果 | toolCall / toolResult | ✅ tool.input.started + tool.called → tool.success | ✅ tool_call / tool_call_update | 两仓单测 |
+| 用量 | Usage | ✅ step.ended + usage.updated | ❌ ACP 的 PromptResponse 没有 token 用量字段 | 不臆造 |
+| 三个终态 | Completed / Incomplete / Failed / Cancelled | ✅ execution.succeeded / failed / interrupted | ✅ stopReason end_turn / cancelled / max_* | 两仓单测 |
+| 取消 | CancelToken | ✅ POST /interrupt | ✅ session/cancel | 两仓取消测试 |
+| 提问：工具批准 | TurnSink.ask → input_request | ✅ permission.asked | ✅ session/request_permission | 两轮问答测试 + 全栈 |
+| 提问：结构化 | 同上 | ✅ form.created（多字段压成 JSON 对象契约） | ✅ elicitation/create（form；url 模式如实不支持） | 两仓问答测试 |
+| 文件输入 | TurnContext.files | ✅ prompt files[]（data URI） | ✅ image / text / resource_link 内容块 | SDK 3 条 + 两仓各 1 条 |
+| 产物回传 | TurnSink.producedFile | ✅ session diff → 从工作目录读字节 | ✅ diff 内容块 | 两仓全栈产物测试 |
+| 会话复用 | ctx.sessionId | ✅ 同一 UHP 会话 → 同一 opencode session | ✅ 同一 ACP session | 两仓会话复用测试 |
+| 多轮续跑 | ctx.answers | ✅ | ✅ | 两轮问答测试 |
+| 模型选择 | Model | ✅ 可钉 model | ⚠️ 由 agent 自身配置决定（未暴露成 UHP 参数） | 文档如实标注 |
+| 环境 / 挂载 | TurnContext.environment | ❌ 未映射 | ❌ 未映射 | SDK 透传，driver 未用 |
+| MCP 服务器配置 | TurnContext.mcpServers | ❌ 未映射 | ❌ 未映射 | 同上 |
+
+## 7. 三仓完成度与验证基线
+
+| 仓 | 角色 | 测试 | 真实链路 | 提交数 |
+|---|---|---|---|---|
+| uhp-cj | SDK（协议面 + 服务端骨架 + HarnessDriver SPI） | 142 条 | conformance core 41/41、extended 50/50、full 104/104 | 42 |
+| uhp-opencode | opencode 2.x 适配器 | 11 条（含 2 条全栈） | real-smoke.sh：真实模型 + shell 工具 → 输出 uhp-opencode-42 | 5 |
+| uhp-acp | ACP 通用适配器 | 9 条（真 ACP 协议 + 假 agent 子进程） | real-smoke.sh：opencode acp → 输出 ACP-OK | 7 |
+
+```bash
+# SDK
+bash scripts/test.sh
+bash scripts/conformance.sh core && bash scripts/conformance.sh extended && bash scripts/conformance.sh full
+# 适配器（各自仓内）
+cd ../uhp-opencode && bash scripts/test.sh && bash scripts/real-smoke.sh
+cd ../uhp-acp     && bash scripts/test.sh && bash scripts/real-smoke.sh
+```
+
+## 8. 有意不做（适配器侧，不是遗漏）
+
+| 项 | 理由 |
+|---|---|
+| ACP 的 url 模式 elicitation | initialize 只广告 form 能力；url 外链引导没有对应的 UHP 提问形态，不假装支持 |
+| opencode 的 experimental artifacts 通道 | 那是 opencode 自己的独立产物通道（art_ 资源 + view 路由），与 UHP 的会话文件语义不对齐；当前按 session diff 回传产物 |
+| 大文件 / 二进制产物的全量读盘 | 适配器只回传 <= 1 MiB 的普通文件；大对象应由 agent 自身或另设通道处理，避免把进程内存当仓库 |
+| ACP 的 usage / cost | 协议没有字段，不臆造 |

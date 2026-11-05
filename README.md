@@ -42,6 +42,20 @@ UHP 定义「产品如何通过 HTTP 驱动一个完整的 agent harness」：�
 > 真实 harness：opencode 2.x 的适配器在**另一个消费方仓** [../uhp-opencode](../uhp-opencode)（含 4 条测试与真实链路冒烟脚本；按本仓边界，适配器不放进 SDK）。
 > ACP 通用 driver 也已落地（[../uhp-acp](../uhp-acp)），`session/request_permission` 已接成 UHP 的两轮问答。
 
+## 支持矩阵
+
+| 维度 | 支持 |
+|---|---|
+| 协议版本 | UHP 2026-10-19（发现与版本协商；每个响应都带 UHP-Version） |
+| 传输 | HTTP/1.1 REST + JSON；SSE（18 种事件 + Unknown 兜底）；**不是 JSON-RPC**。传输层 = stdx.net.http |
+| 一致性类 | core ✅ 41/41 · extended ✅ 50/50 · full ✅ 104/104（suite 2026.10.19.post5，报告在 docs/conformance/） |
+| 客户端 | 发现/版本协商、建任务/流式/续跑、SSE 消费、错误映射与重试、幂等键、input_items、会话/文件/容器 |
+| 服务端 | 83 个 operation（逐条见 docs/support.md §2）、任务状态机（busy / mismatch / 终态不可迁移）、EventChannel（序号 + 重放）、能力门控、HarnessDriver SPI |
+| 可选能力 | streaming / sessions / cancellation / files_input / files_output / session_listing / harness_management / session_sharing / harness_idempotency / input_requests / plugins / environments / memories 已开；harness_retirement、响应级 idempotency、input_history 如实报 false |
+| 真实适配器 | opencode 2.x 与 ACP 通用（消费方仓 [uhp-opencode](../uhp-opencode)、[uhp-acp](../uhp-acp)；能力矩阵见 docs/support.md §6） |
+| 测试基线 | 142 条单元/行为测试；三档一致性报告入库；两个适配器各有真实链路 real-smoke |
+| 有意不做 | harness 级 events 流、历史路径别名、断线按 cursor 续流、二进制 multipart（理由见 docs/support.md §3、§8） |
+
 ## 目录
 
 ```
