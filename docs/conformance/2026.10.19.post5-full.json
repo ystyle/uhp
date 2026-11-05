@@ -3,7 +3,7 @@
   "protocol_version": "2026-10-19",
   "suite_protocol_version": "2026-10-19",
   "suite_version": "2026.10.19.post5",
-  "generated_at": "2026-11-05T08:24:51Z",
+  "generated_at": "2026-11-05T08:35:51Z",
   "target": "http://127.0.0.1:8471",
   "target_label": "",
   "implementation": {
@@ -14,9 +14,7 @@
   "conformant": false,
   "conformant_with_skips": true,
   "skipped_not_verified": [
-    "EN-09",
-    "ME-10",
-    "ME-11"
+    "EN-09"
   ],
   "coverage": {
     "complete": true,
@@ -27,9 +25,9 @@
   },
   "highest_class_passed": "extended",
   "summary": {
-    "pass": 101,
+    "pass": 103,
     "fail": 0,
-    "skip": 3,
+    "skip": 1,
     "error": 0,
     "total": 104
   },
@@ -208,7 +206,7 @@
       "class": "core",
       "spec": "protocol/versions/2026-10-19/lifecycle.md#4-session-lifecycle",
       "outcome": "pass",
-      "detail": "session_id=hsess1133368698697529269211124734383985386814"
+      "detail": "session_id=hsess150425156229688280511674432168892190615"
     },
     {
       "id": "T-05",
@@ -320,7 +318,7 @@
       "class": "core",
       "spec": "protocol/versions/2026-10-19/sessions.md#1-continuing-a-session",
       "outcome": "pass",
-      "detail": "session hsess1133368698697529269211124734383985386814 extended"
+      "detail": "session hsess150425156229688280511674432168892190615 extended"
     },
     {
       "id": "C-02",
@@ -416,7 +414,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/harnesses.md#4-managing-harnesses",
       "outcome": "pass",
-      "detail": "created, updated and deleted chrn_1585367596384189849618390934174018119914"
+      "detail": "created, updated and deleted chrn_1158780408092363226113426305076187909611"
     },
     {
       "id": "F-03",
@@ -496,7 +494,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/plugins.md#5-exporting-a-harness-as-a-plugin",
       "outcome": "pass",
-      "detail": "exported 5 files as 'uhp-conformance-3f5686', reinstalled"
+      "detail": "exported 5 files as 'uhp-conformance-dd4bfb', reinstalled"
     },
     {
       "id": "P-07",
@@ -552,7 +550,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/sessions.md#6-deleting",
       "outcome": "pass",
-      "detail": "deleted hsess121922279012705419358295659847543115957, now 404"
+      "detail": "deleted hsess674237498913177000314646112680079803434, now 404"
     },
     {
       "id": "F-09",
@@ -560,7 +558,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/harnesses.md#53-delete",
       "outcome": "pass",
-      "detail": "kept: hsess63929759808547473488346905559579202964 still reads after its harness was deleted"
+      "detail": "kept: hsess67469222184735778756839058081519368459 still reads after its harness was deleted"
     },
     {
       "id": "F-10",
@@ -568,7 +566,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/harnesses.md#51-create",
       "outcome": "pass",
-      "detail": "chrn_141423738347553797717242603260414416806 returned for both attempts, a changed request refused with 409, made again after its delete"
+      "detail": "chrn_43939540267191999488963026754466640738 returned for both attempts, a changed request refused with 409, made again after its delete"
     },
     {
       "id": "F-02",
@@ -616,7 +614,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/tasks.md#32-asking-the-person",
       "outcome": "pass",
-      "detail": "asked inreq_1504512599971463384613882150488444377537 (choice, 2 options); 422 outside the options, 409 for a stale id, answered once (completed), 409 again"
+      "detail": "asked inreq_148780989923430855818292463724444142846 (choice, 2 options); 422 outside the options, 409 for a stale id, answered once (completed), 409 again"
     },
     {
       "id": "T-14",
@@ -632,7 +630,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/sessions.md#5-session-sharing",
       "outcome": "pass",
-      "detail": "readable unauthenticated at /v1/shared/732304809837404801010237253100327482275"
+      "detail": "readable unauthenticated at /v1/shared/1511823226428361737316113015476532428497"
     },
     {
       "id": "R-02",
@@ -672,7 +670,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/sessions.md#5-session-sharing",
       "outcome": "pass",
-      "detail": "revoked via DELETE /v1/sessions/hsess1133368698697529269211124734383985386814/share; 2 link(s) minted, all now 404/404"
+      "detail": "revoked via DELETE /v1/sessions/hsess150425156229688280511674432168892190615/share; 2 link(s) minted, all now 404/404"
     },
     {
       "id": "R-07",
@@ -696,7 +694,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/environments.md#2-the-environment-object",
       "outcome": "pass",
-      "detail": "henv_376067264618877462512979889526687913124 at /home/ystyle/Projects/Cangjie/uhp-cj/.uhp-envs/uhp-conformance-7915f5"
+      "detail": "henv_611331821119711621612006833294370936654 at /home/ystyle/Projects/Cangjie/uhp-cj/.uhp-envs/uhp-conformance-421b00"
     },
     {
       "id": "EN-02",
@@ -744,7 +742,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/environments.md#6-what-a-session-sees",
       "outcome": "pass",
-      "detail": "read /home/ystyle/Projects/Cangjie/uhp-cj/.uhp-envs/uhp-conformance-7915f5/data/hello.txt; write refused; metadata.environment reported"
+      "detail": "read /home/ystyle/Projects/Cangjie/uhp-cj/.uhp-envs/uhp-conformance-421b00/data/hello.txt; write refused; metadata.environment reported"
     },
     {
       "id": "EN-09",
@@ -768,7 +766,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/memories.md#2-the-memory-object",
       "outcome": "pass",
-      "detail": "hmem_22409111408238335813654676481995627339 > hmem_134311671350989299897807579909284182879 on provider 'uhp-local'"
+      "detail": "hmem_701176441458055180311575899986266831092 > hmem_1706427644642928829216443199157820496213 on provider 'uhp-local'"
     },
     {
       "id": "ME-02",
@@ -776,7 +774,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/memories.md#4-records",
       "outcome": "pass",
-      "detail": "hmrec_155942824968174510184903362178928755087 written by {'kind': 'member', 'type': 'agent', 'id': 'conformance'}"
+      "detail": "hmrec_490091829062538628931245893288374940 written by {'kind': 'member', 'type': 'agent', 'id': 'conformance'}"
     },
     {
       "id": "ME-03",
@@ -784,7 +782,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/memories.md#61-search-finds-the-place-then-the-agent-walks",
       "outcome": "pass",
-      "detail": "found from hmem_22409111408238335813654676481995627339 in hmem_134311671350989299897807579909284182879; depth 0 and the upward direction hold"
+      "detail": "found from hmem_701176441458055180311575899986266831092 in hmem_1706427644642928829216443199157820496213; depth 0 and the upward direction hold"
     },
     {
       "id": "ME-04",
@@ -831,16 +829,16 @@
       "title": "Entities and relationships are records and references, read as one graph",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/memories.md#66-the-graph",
-      "outcome": "skip",
-      "detail": "this provider keeps no record of type entity (graph.entities is none)"
+      "outcome": "pass",
+      "detail": "3 nodes, 2 edges around hmrec_1735388486455376067918365559788719246817 on entities=records"
     },
     {
       "id": "ME-11",
       "title": "A fact that holds one value ends what it replaced, keeps a disagreement, takes its place in the past, and says what it did",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/memories.md#44-facts-that-change",
-      "outcome": "skip",
-      "detail": "this provider does not declare holds: it keeps the attributes as written"
+      "outcome": "pass",
+      "detail": "five facts on Corvel 7dabb4: ended, linked, placed in the past, and placed inside an earlier value"
     },
     {
       "id": "ME-12",
@@ -848,7 +846,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/memories.md#63-the-response",
       "outcome": "pass",
-      "detail": "limit 1 answered both sides of Hollinb2528e's lease"
+      "detail": "limit 1 answered both sides of Hollin36789d's lease"
     },
     {
       "id": "ME-13",

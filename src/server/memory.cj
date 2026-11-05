@@ -54,7 +54,7 @@ public class MemoryVersion {
     public let contentJson: String
     public let attributesJson: String
     public var referencesJson: String
-    public let timeJson: String
+    public var timeJson: String
     public let writtenByJson: String
     public let createdAt: Int64
     // 派生：搜索文本与 standing（prime 只看 standing 记录）
@@ -406,6 +406,71 @@ public func withReference(refsJson: String, rel: String, recordId: String): Stri
     return String.fromUtf8(out.bytes())
 }
 
+// POST 记录的应答：除记录本身外，带本次写入的 closed / conflicts（规范要求，且**不存储**）
+public func memoryRecordWriteJson(rec: MemoryRecordRec, closed: Array<String>,
+                                  conflicts: Array<String>): String {
+    let base = memoryRecordJson(rec)
+    let cut = base[0..base.size - 1]   // 去掉结尾的 }
+    let out = ByteBuffer()
+    let w = JsonWriter(out)
+    w.startObject()
+    w.writeName("closed")
+    w.startArray()
+    for (c in closed) {
+        w.writeValue(c)
+    }
+    w.endArray()
+    w.writeName("conflicts")
+    w.startArray()
+    for (c in conflicts) {
+        w.writeValue(c)
+    }
+    w.endArray()
+    w.endObject()
+    w.flush()
+    let frag = String.fromUtf8(out.bytes())
+    return cut + "," + frag[1..frag.size - 1] + "}"
+}
+
+// 版本里的时间：valid_from / valid_to 都是 ISO 字符串（同格式可直接按字典序比较）
+public func timeField(timeJson: String, field: String): Option<String> {
+    return match (tryParseJsonObject(timeJson)) {
+        case Some(o) => o.str(field)
+        case None => None
+    }
+}
+
+public func renderTime(start: Option<String>, end: Option<String>): String {
+    let out = ByteBuffer()
+    let w = JsonWriter(out)
+    w.startObject()
+    match (start) {
+        case Some(v) => w.writeName("valid_from").writeValue(v)
+        case None => ()
+    }
+    match (end) {
+        case Some(v) => w.writeName("valid_to").writeValue(v)
+        case None => ()
+    }
+    w.endObject()
+    w.flush()
+    return String.fromUtf8(out.bytes())
+}
+
+// provider 自己动手的版本（例如「结束上一条事实」），on_behalf_of 是被代表的人
+public func providerWriterJson(who: String): String {
+    let out = ByteBuffer()
+    let w = JsonWriter(out)
+    w.startObject()
+    w.writeName("kind").writeValue("provider")
+    w.writeName("on_behalf_of")
+    let inner = memoryWriterJson(who)
+    w.jsonValue(inner)
+    w.endObject()
+    w.flush()
+    return String.fromUtf8(out.bytes())
+}
+
 public func memoryRecordJson(rec: MemoryRecordRec): String {
     let v = rec.latest()
     let out = ByteBuffer()
@@ -474,8 +539,8 @@ public func memoryProviderJson(): String {
     w.writeName("isolation").writeValue("shared")
     w.writeName("derivation").writeValue("none")
     w.writeName("prime").writeValue(true)
-    // holds=false：不实现「一个属性只持一个值」的时序事实 -> ME-11 按 provider 声明跳过
-    w.writeName("holds").writeValue(false)
+    // holds=true：实现「一个属性只持一个值」的时序事实（valid_from/valid_to/closed/conflicts）
+    w.writeName("holds").writeValue(true)
     w.writeName("recall")
     w.startObject()
     w.writeName("signals")
@@ -493,10 +558,10 @@ public func memoryProviderJson(): String {
     w.startObject()
     w.writeName("supported").writeValue(true)
     w.endObject()
-    // graph.entities=none：不实现实体图 -> ME-10 按 provider 声明跳过
+    // graph.entities=records：实体与引用按记录保存，图由引用推导
     w.writeName("graph")
     w.startObject()
-    w.writeName("entities").writeValue("none")
+    w.writeName("entities").writeValue("records")
     w.endObject()
     w.writeName("content")
     w.startObject()

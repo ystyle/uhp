@@ -170,6 +170,8 @@ public class Engine {
     private let memRecords: HashMap<String, MemoryRecordRec> = HashMap<String, MemoryRecordRec>()
     private let memLinks: HashMap<String, ArrayList<(String, String)>> = HashMap<String, ArrayList<(String, String)>>()
     private let memProvider: String = "uhp-local"
+    // POST 记录的应答要带 closed/conflicts（不存储）
+    private let memWriteExtras: HashMap<String, (Array<String>, Array<String>)> = HashMap<String, (Array<String>, Array<String>)>()
     private let versions: Array<String>
     private let cls: ConformanceClass
     private let capabilitiesValue: Capabilities
@@ -894,7 +896,248 @@ public class Engine {
                 }
             }
             memory.updatedAt = nowSeconds()
+            this.applyHoldsLocked(rec, p)
             return rec
+        }
+    }
+
+    // 一个属性只持一个值（Memories §4.4）：新值可能结束旧值、可能只是与它冲突、也可能落进过去
+    private func applyHoldsLocked(rec: MemoryRecordRec, p: Principal): Unit {
+        let v = rec.latest()
+        let attrs = match (tryParseJsonObject(v.attributesJson)) {
+            case Some(o) => o
+            case None => return
+        }
+        if ((attrs.str("holds") ?? "") != "one") {
+            return
+        }
+        let predicate = attrs.str("predicate") ?? ""
+        let start = match (timeField(v.timeJson, "valid_from")) {
+            case Some(t) => t
+            case None => return
+        }
+        // subject 引用
+        var subject = ""
+        for ((rel, rid) in v.references) {
+            if (rel == "subject" && subject.size == 0) {
+                subject = rid
+            }
+        }
+        if (subject.size == 0) {
+            return
+        }
+        // 同一 memory 内、同 subject+predicate 的其他 active 事实
+        let existing = ArrayList<MemoryRecordRec>()
+        for ((rid, r) in this.memRecords) {
+            if (rid == rec.id || r.memoryId != rec.memoryId || r.status != "active") {
+                continue
+            }
+            let rv = r.latest()
+            let ra = match (tryParseJsonObject(rv.attributesJson)) {
+                case Some(o) => o
+                case None => continue
+            }
+            if ((ra.str("holds") ?? "") != "one" || (ra.str("predicate") ?? "") != predicate) {
+                continue
+            }
+            var rsubject = ""
+            for ((rel, xid) in rv.references) {
+                if (rel == "subject" && rsubject.size == 0) {
+                    rsubject = xid
+                }
+            }
+            if (rsubject == subject) {
+                existing.add(r)
+            }
+        }
+        let sameStart = ArrayList<String>()
+        let active = ArrayList<MemoryRecordRec>()
+        var earliestLater: Option<String> = None
+        for (f in existing) {
+            let fv = f.latest()
+            let fs = timeField(fv.timeJson, "valid_from") ?? ""
+            let fe = timeField(fv.timeJson, "valid_to")
+            if (fs == start) {
+                sameStart.add(f.id)
+            }
+            // 在 start 时刻仍成立：开始 <= start 且没有结束（或结束晚于 start）
+            let still = fs <= start && match (fe) {
+                case Some(e) => e > start
+                case None => true
+            }
+            if (still) {
+                active.add(f)
+            }
+            if (fs > start) {
+                match (earliestLater) {
+                    case Some(cur) => if (fs < cur) {
+                        earliestLater = Some(fs)
+                    }
+                    case None => earliestLater = Some(fs)
+                }
+            }
+        }
+        let closed = ArrayList<String>()
+        let conflicts = ArrayList<String>()
+        if (sameStart.size > 0) {
+            // 同一时刻的第二个值：不是结束，是分歧
+            for (fid in sameStart) {
+                conflicts.add(fid)
+                this.linkLocked(rec.id, "contradicts", fid)
+                this.linkLocked(fid, "contradicts", rec.id)
+                match (this.memRecords.get(fid)) {
+                    case Some(other) =>
+                        let ov = other.latest()
+                        ov.referencesJson = withReference(ov.referencesJson, "contradicts", rec.id)
+                        let all = ArrayList<(String, String)>()
+                        for (r0 in ov.references) {
+                            all.add(r0)
+                        }
+                        all.add(("contradicts", rec.id))
+                        ov.references = all.toArray()
+                    case None => ()
+                }
+                // 新值自己的 references 也留痕
+                v.referencesJson = withReference(v.referencesJson, "contradicts", fid)
+            }
+            // 同一时刻的分歧不结束任何一边
+        } else {
+            // 结束 start 时刻仍成立的那些
+            for (f in active) {
+                this.closeFactLocked(f, start, p.name)
+                closed.add(f.id)
+            }
+            // 该值自己结束于「下一个更晚的开始」（在它之后先开始的那个）
+            match (earliestLater) {
+                case Some(t) =>
+                    v.timeJson = renderTime(Some(start), Some(t))
+                case None => ()
+            }
+        }
+        this.memWriteExtras[rec.id] = (closed.toArray(), conflicts.toArray())
+    }
+
+    // 结束一条事实：追加一个 provider 版本（旧版本保留当时的世界，valid_to 只落在新版本上）
+    private func closeFactLocked(f: MemoryRecordRec, at: String, who: String): Unit {
+        let prev = f.latest()
+        let start = timeField(prev.timeJson, "valid_from") ?? ""
+        let v = MemoryVersion(prev.version + 1, prev.titleJson, prev.contentJson, prev.attributesJson,
+            prev.referencesJson, renderTime(Some(start), Some(at)), providerWriterJson(who),
+            prev.searchText, prev.standing, prev.references, Some(0))
+        f.versions.add(v)
+        f.updatedAt = nowSeconds()
+    }
+
+    public func writeExtrasOf(rid: String): (Array<String>, Array<String>) {
+        synchronized(this.lock) {
+            return match (this.memWriteExtras.get(rid)) {
+                case Some(v) => v
+                case None => (Array<String>(), Array<String>())
+            }
+        }
+    }
+
+    // 实体图（Memories §6.6）：节点是记录，边是引用；按引用**无向**遍历 hops 跳
+    public func memoryGraph(mid: String, aroundId: String, hops: Int64): String {
+        synchronized(this.lock) {
+            let _ = this.memoryLocked(mid)
+            let _ = this.recordLocked(mid, aroundId)
+            // 邻接表：引用是无向的，两边都要能走到
+            let adj: HashMap<String, ArrayList<String>> = HashMap<String, ArrayList<String>>()
+            for ((rid, r) in this.memRecords) {
+                if (r.memoryId != mid) {
+                    continue
+                }
+                for ((_, to) in r.latest().references) {
+                    this.addNeighbour(adj, rid, to)
+                    this.addNeighbour(adj, to, rid)
+                }
+            }
+            let visited = ArrayList<String>()
+            visited.add(aroundId)
+            var frontier = ArrayList<String>()
+            frontier.add(aroundId)
+            var hop: Int64 = 0
+            while (hop < hops) {
+                let next = ArrayList<String>()
+                for (rid in frontier) {
+                    match (adj.get(rid)) {
+                        case Some(list) =>
+                            for (other in list) {
+                                if (!visited.contains(other)) {
+                                    visited.add(other)
+                                    next.add(other)
+                                }
+                            }
+                        case None => ()
+                    }
+                }
+                frontier = next
+                hop = hop + 1
+            }
+            let out = ByteBuffer()
+            let w = JsonWriter(out)
+            w.startObject()
+            w.writeName("object").writeValue("memory.graph")
+            w.writeName("truncated").writeValue(false)
+            w.writeName("nodes")
+            w.startArray()
+            for (rid in visited) {
+                match (this.memRecords.get(rid)) {
+                    case Some(r) =>
+                        w.startObject()
+                        w.writeName("record").jsonValue(memoryRecordJson(r))
+                        w.writeName("memory")
+                        w.startObject()
+                        w.writeName("id").writeValue(r.memoryId)
+                        w.endObject()
+                        w.endObject()
+                    case None => ()
+                }
+            }
+            w.endArray()
+            w.writeName("edges")
+            w.startArray()
+            for (rid in visited) {
+                match (this.memRecords.get(rid)) {
+                    case Some(r) =>
+                        for ((rel, to) in r.latest().references) {
+                            if (!visited.contains(to)) {
+                                continue
+                            }
+                            w.startObject()
+                            w.writeName("rel").writeValue(rel)
+                            w.writeName("from")
+                            w.startObject()
+                            w.writeName("record_id").writeValue(rid)
+                            w.endObject()
+                            w.writeName("to")
+                            w.startObject()
+                            w.writeName("record_id").writeValue(to)
+                            w.endObject()
+                            w.writeName("available").writeValue(true)
+                            w.endObject()
+                        }
+                    case None => ()
+                }
+            }
+            w.endArray()
+            w.endObject()
+            w.flush()
+            return String.fromUtf8(out.bytes())
+        }
+    }
+
+    private func addNeighbour(adj: HashMap<String, ArrayList<String>>, from: String, to: String): Unit {
+        let list = match (adj.get(from)) {
+            case Some(l) => l
+            case None =>
+                let l = ArrayList<String>()
+                adj[from] = l
+                l
+        }
+        if (!list.contains(to)) {
+            list.add(to)
         }
     }
 

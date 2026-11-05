@@ -10,6 +10,7 @@ import std.io.*
 import stdx.encoding.json.stream.*
 import stdx.net.http.*
 import uhp.types.codec.*
+import uhp.transport.*
 import uhp.types.generated.*
 import uhp.types.handwritten.*
 
@@ -276,7 +277,9 @@ public class UhpHttpServer {
             if (seg.size == 4 && seg[3] == "records" && method == "POST") {
                 let w = parseMemoryWrite(JsonReader(ByteBuffer(readAllText(ctx.request.body).toArray())))
                 let rec = this.engine.createMemoryRecord(principal, mid, w)
-                this.writeJson(ctx, UInt16(200), memoryRecordJson(rec), version: Some(usedVersion))
+                let (closed, conflicts) = this.engine.writeExtrasOf(rec.id)
+                this.writeJson(ctx, UInt16(200), memoryRecordWriteJson(rec, closed, conflicts),
+                    version: Some(usedVersion))
                 return
             }
             if (seg.size == 4 && seg[3] == "records" && method == "GET") {
@@ -341,6 +344,20 @@ public class UhpHttpServer {
                 }
                 let (erased, unreachable) = this.engine.eraseMemoryRecords(mid, list.toArray())
                 this.writeJson(ctx, UInt16(200), erasureJson(erased, unreachable), version: Some(usedVersion))
+                return
+            }
+            if (seg.size == 4 && seg[3] == "graph" && method == "POST") {
+                let obj = parseJsonObject(readAllText(ctx.request.body))
+                let around = obj.str("around") ?? ""
+                let hops = match (obj.raw("hops")) {
+                    case Some(v) => match (Int64.tryParse(v)) {
+                        case Some(n) => n
+                        case None => 1
+                    }
+                    case None => 1
+                }
+                this.writeJson(ctx, UInt16(200), this.engine.memoryGraph(mid, around, hops),
+                    version: Some(usedVersion))
                 return
             }
             if (seg.size == 4 && seg[3] == "recall" && method == "POST") {

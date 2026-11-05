@@ -1,6 +1,7 @@
 // L2 测试：记忆（Memories 章）的引擎行为。
 package uhp.server
 
+import std.collection.ArrayList
 import std.unittest.*
 import std.unittest.testmacro.*
 import std.io.*
@@ -18,6 +19,16 @@ func posOf(text: String, sub: String): Int64 {
         case Some(v) => v
         case None => -1
     }
+}
+
+func closedOf(e: Engine, rid: String): Array<String> {
+    let (c, _) = e.writeExtrasOf(rid)
+    return c
+}
+
+func conflictsOf(e: Engine, rid: String): Array<String> {
+    let (_, x) = e.writeExtrasOf(rid)
+    return x
 }
 
 func writeJsonBody(text: String): MemoryWrite {
@@ -183,4 +194,158 @@ func move_cycle_refused_and_delete_takes_subtree(): Unit {
         gone = err.code
     }
     @Expect(gone, "memory_not_found")
+}
+
+
+func entityBody(title: String): String {
+    let out = ByteBuffer()
+    let w = JsonWriter(out)
+    w.startObject()
+    w.writeName("type").writeValue("entity")
+    w.writeName("title").writeValue(title)
+    w.endObject()
+    w.flush()
+    return String.fromUtf8(out.bytes())
+}
+
+func cityFactBody(city: String, t: String, subjectId: String): String {
+    let out = ByteBuffer()
+    let w = JsonWriter(out)
+    w.startObject()
+    w.writeName("type").writeValue("fact")
+    w.writeName("title").writeValue("lives in " + city)
+    w.writeName("references")
+    w.startArray()
+    w.startObject()
+    w.writeName("rel").writeValue("subject")
+    w.writeName("record_id").writeValue(subjectId)
+    w.endObject()
+    w.endArray()
+    w.writeName("attributes")
+    w.startObject()
+    w.writeName("predicate").writeValue("home_city")
+    w.writeName("value").writeValue(city)
+    w.writeName("holds").writeValue("one")
+    w.writeName("stated_at").writeValue(t)
+    w.endObject()
+    w.writeName("time")
+    w.startObject()
+    w.writeName("valid_from").writeValue(t)
+    w.endObject()
+    w.endObject()
+    w.flush()
+    return String.fromUtf8(out.bytes())
+}
+
+func edgeFactBody(title: String, subjectId: String, objectId: String): String {
+    let out = ByteBuffer()
+    let w = JsonWriter(out)
+    w.startObject()
+    w.writeName("type").writeValue("fact")
+    w.writeName("title").writeValue(title)
+    w.writeName("references")
+    w.startArray()
+    w.startObject()
+    w.writeName("rel").writeValue("subject")
+    w.writeName("record_id").writeValue(subjectId)
+    w.endObject()
+    w.startObject()
+    w.writeName("rel").writeValue("object")
+    w.writeName("record_id").writeValue(objectId)
+    w.endObject()
+    w.endArray()
+    w.endObject()
+    w.flush()
+    return String.fromUtf8(out.bytes())
+}
+
+@Test
+func temporal_fact_closes_and_conflicts(): Unit {
+    let e = engineMem()
+    let p = Principal("alice")
+    let m = e.createMemory(p, "m", None, None, None)
+    let ent = e.createMemoryRecord(p, m.id, writeJsonBody(entityBody("Corvel")))
+    let t0 = "2023-01-01T00:00:00Z"
+    let t1 = "2024-01-01T00:00:00Z"
+    let t15 = "2024-03-01T00:00:00Z"
+    let t2 = "2024-06-01T00:00:00Z"
+    let lis = e.createMemoryRecord(p, m.id, writeJsonBody(cityFactBody("Lisbon", t1, ent.id)))
+    @Expect(closedOf(e, lis.id).size, 0)
+    let por = e.createMemoryRecord(p, m.id, writeJsonBody(cityFactBody("Porto", t2, ent.id)))
+    @Expect(closedOf(e, por.id), [lis.id])
+    @Expect((timeField(e.getMemoryRecord(m.id, lis.id).latest().timeJson, "valid_to") ?? ""), t2)
+    let braga = e.createMemoryRecord(p, m.id, writeJsonBody(cityFactBody("Braga", t2, ent.id)))
+    @Expect(closedOf(e, braga.id).size, 0)
+    @Expect(conflictsOf(e, braga.id), [por.id])
+    let faro = e.createMemoryRecord(p, m.id, writeJsonBody(cityFactBody("Faro", t0, ent.id)))
+    @Expect((timeField(e.getMemoryRecord(m.id, faro.id).latest().timeJson, "valid_to") ?? ""), t1)
+    let coimbra = e.createMemoryRecord(p, m.id, writeJsonBody(cityFactBody("Coimbra", t15, ent.id)))
+    @Expect(closedOf(e, coimbra.id), [lis.id])
+    @Expect((timeField(e.getMemoryRecord(m.id, coimbra.id).latest().timeJson, "valid_to") ?? ""), t2)
+    @Expect((timeField(e.getMemoryRecord(m.id, lis.id).latest().timeJson, "valid_to") ?? ""), t15)
+    let hist = e.getMemoryRecord(m.id, lis.id).versions
+    @Expect(timeField(hist[0].timeJson, "valid_to").isNone(), true)
+    @Expect(e.getMemoryRecord(m.id, lis.id).latest().writtenByJson.contains("provider"), true)
+}
+
+func graphNodeIds(json: String): Array<String> {
+    let out = ArrayList<String>()
+    try {
+        let r = JsonReader(ByteBuffer(json.toArray()))
+        r.startObject()
+        while (true) {
+            let name = match (r.peek()) {
+                case Some(JsonToken.EndObject) => break
+                case Some(JsonToken.Name) => r.readName()
+                case _ => break
+            }
+            if (name != "nodes") {
+                r.skip()
+                continue
+            }
+            r.startArray()
+            while (true) {
+                match (r.peek()) {
+                    case Some(JsonToken.EndArray) => break
+                    case Some(JsonToken.BeginObject) =>
+                        let node = String.fromUtf8(r.readValueBytes())
+                        match (tryParseJsonObject(node)) {
+                            case Some(o) => match (o.raw("record")) {
+                                case Some(rec) => match (tryParseJsonObject(rec)) {
+                                    case Some(ro) => match (ro.str("id")) {
+                                        case Some(id) => out.add(id)
+                                        case None => ()
+                                    }
+                                    case None => ()
+                                }
+                                case None => ()
+                            }
+                            case None => ()
+                        }
+                    case _ => r.skip()
+                }
+            }
+            r.endArray()
+        }
+        r.endObject()
+    } catch (e: Exception) {
+        ()
+    }
+    return out.toArray()
+}
+
+@Test
+func graph_reaches_two_hops_through_fact(): Unit {
+    let e = engineMem()
+    let p = Principal("alice")
+    let m = e.createMemory(p, "m", None, None, None)
+    let a = e.createMemoryRecord(p, m.id, writeJsonBody(entityBody("Ines")))
+    let b = e.createMemoryRecord(p, m.id, writeJsonBody(entityBody("Harlow")))
+    let f = e.createMemoryRecord(p, m.id, writeJsonBody(edgeFactBody("works_at", a.id, b.id)))
+    let two = graphNodeIds(e.memoryGraph(m.id, a.id, 2))
+    @Expect(two.contains(f.id), true)
+    @Expect(two.contains(b.id), true)
+    let one = graphNodeIds(e.memoryGraph(m.id, a.id, 1))
+    @Expect(one.contains(f.id), true)
+    @Expect(one.contains(b.id), false)
 }
