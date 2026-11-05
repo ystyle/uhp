@@ -1,0 +1,44 @@
+[dependencies]
+  # 消费方仓：SDK 与 ACP 库都用 path 依赖（都未发布到中心仓）
+  "uhp" = { path = "../uhp-cj" }
+  "acp" = { path = "../acp-cj" }
+  # acp-cj 的传输层签名用 ystyle::jsonrpc Result/JsonRpcError，本仓 driver 直接匹配它
+  "ystyle::jsonrpc" = "0.7.9"
+  # elicitation 的 content 是 JSON 值，用 jsonvalue 的 JsonValue 承载
+  "jsonvalue" = "1.1.1"
+
+[package]
+  cjc-version = "1.2.0"
+  name = "uhp_acp"
+  description = "ACP（Agent Client Protocol）的 UHP HarnessDriver 适配器（消费方代码）"
+  version = "0.1.0"
+  license = ["MulanPSL-2.0"]
+  authors = ["ystyle"]
+  repository = "https://atomgit.com/ystyle/uhp-acp"
+  output-type = "static"
+  compile-option = "-Woff unused"
+  link-option = "-lstdx.crypto.digest"
+  include = ["/src", "/LICENSE"]
+  exclude = ["/docs", "/scripts", "/target"]
+
+[target.x86_64-unknown-linux-gnu.bin-dependencies]
+  path-option = ["${CANGJIE_STDX_PATH}"]
+
+[target.aarch64-unknown-linux-gnu.bin-dependencies]
+  path-option = ["${CANGJIE_STDX_PATH}"]
+
+[target.x86_64-apple-darwin.bin-dependencies]
+  path-option = ["${CANGJIE_STDX_PATH}"]
+
+[target.aarch64-apple-darwin.bin-dependencies]
+  path-option = ["${CANGJIE_STDX_PATH}"]
+
+# 假 ACP agent：测试用的被测子进程（实现 ACP Agent 侧）
+[package.package-configuration."uhp_acp.examples.fake_agent"]
+  output-type = "executable"
+  compile-option = "--static"
+
+# 示例：起一个 UHP 服务端，用 ACP driver
+[package.package-configuration."uhp_acp.examples.uhp_server"]
+  output-type = "executable"
+  compile-option = "--static"
