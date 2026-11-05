@@ -3,3 +3,6 @@
 /.cache/
 *.log
 .uhp-research/
+# 一致性/环境测试创建的 mount 目录
+.uhp-envs/
+**/.uhp-envs/
