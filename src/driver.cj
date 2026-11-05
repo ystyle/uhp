@@ -47,6 +47,8 @@ public class OpencodeDriver <: HarnessDriver {
     private let lock = Mutex()
     // UHP 会话 -> opencode 会话：同一个 UHP 会话的后续任务应落在同一个 opencode 会话里
     private let sessions: HashMap<String, String> = HashMap<String, String>()
+    // 等人类批准的权限请求（按 UHP 会话记）：下一轮续跑时把答案回给 opencode
+    private let pendingPermissions: HashMap<String, String> = HashMap<String, String>()
 
     public init(opts: OpencodeOptions) {
         this.opts = opts
@@ -76,8 +78,8 @@ public class OpencodeDriver <: HarnessDriver {
     }
 
     public func capabilities(): HarnessCapabilities {
-        // 工具执行由 opencode 自己的沙箱做；input_requests 走 opencode 的 permission/form，未接
-        return HarnessCapabilities(false, false)
+        // 工具执行由 opencode 自己的沙箱做；input_requests 已接 opencode 的 permission 事件
+        return HarnessCapabilities(false, true)
     }
 
     public func run(ctx: TurnContext, sink: TurnSink, cancel: CancelToken): TurnOutcome {
@@ -96,12 +98,24 @@ public class OpencodeDriver <: HarnessDriver {
             case Some(v) => v
             case None => return TurnOutcome.Failed("harness_error", "opencode session create failed")
         }
-        // 先订阅再发 prompt：反过来会漏掉最早的事件
+        // 续跑（回答问题）：把答案作为权限决定回给 opencode，然后继续读事件（不再发 prompt）
+        let answered = ctx.answers.size > 0 && this.pendingPermissions.contains(ctx.sessionId)
         let pump = EventPump(http)
         this.waitSubscription(pump, 3000)
-        let (pstatus, pbody) = http.post("/api/session/" + ocSession + "/prompt", this.promptJson(ctx.input))
-        if (pstatus != UInt16(200)) {
-            return TurnOutcome.Failed("harness_error", "opencode prompt HTTP " + pstatus.toString())
+        if (answered) {
+            let permId = this.pendingPermissions[ctx.sessionId]
+            this.pendingPermissions.remove(ctx.sessionId)
+            let decision = ctx.answers[0]
+            let reply = "{\"decision\":" + ocJsonQuote(decision) + "}"
+            let (rstatus, _) = http.post("/api/session/" + ocSession + "/permission/" + permId + "/reply", reply)
+            if (rstatus != UInt16(204) && rstatus != UInt16(200)) {
+                return TurnOutcome.Failed("harness_error", "opencode permission reply HTTP " + rstatus.toString())
+            }
+        } else {
+            let (pstatus, _) = http.post("/api/session/" + ocSession + "/prompt", this.promptJson(ctx.input))
+            if (pstatus != UInt16(200)) {
+                return TurnOutcome.Failed("harness_error", "opencode prompt HTTP " + pstatus.toString())
+            }
         }
         let usage = Usage()
         let callNames = HashMap<String, String>()
@@ -159,6 +173,23 @@ public class OpencodeDriver <: HarnessDriver {
                         this.fillUsage(usage, payload.raw("tokens"))
                     case "session.step.ended" =>
                         this.fillUsage(usage, payload.raw("tokens"))
+                    case "permission.asked" =>
+                        // opencode 在等工具批准：把它变成 UHP 的 input_request，本轮结束
+                        let permId = payload.str("id") ?? ""
+                        let action = payload.str("action") ?? "an action"
+                        var prompt = "Allow " + action + "?"
+                        match (payload.str("message")) {
+                            case Some(m) => if (m.size > 0) {
+                                prompt = m
+                            }
+                            case None => ()
+                        }
+                        let _ = sink.ask("confirm", prompt,
+                            [("once", "Allow once"), ("always", "Always allow"), ("reject", "Reject")])
+                        if (permId.size > 0) {
+                            this.pendingPermissions[ctx.sessionId] = permId
+                        }
+                        return TurnOutcome.Incomplete(IncompleteReason.InputRequired, None)
                     case "session.execution.succeeded" =>
                         return TurnOutcome.Completed(Some(usage))
                     case "session.execution.failed" =>

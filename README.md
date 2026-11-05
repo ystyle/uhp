@@ -9,7 +9,8 @@ opencode 2.x 的 UHP HarnessDriver 适配器（消费方代码，不是 UHP SDK 
 
 | 层 | 证据 |
 |---|---|
-| 单元/行为 | 4 条测试：事件映射、会话复用、失败路径、取消中断（假 opencode，不依赖公网/模型） |
+| 单元/行为 | 5 条：事件映射、会话复用、失败路径、取消中断、permission→input_request 续跑（假 opencode） |
+| 全栈 | 1 条：UHP 服务端（Engine + OpencodeDriver）→ 假 opencode，任务以 incomplete+input_request 结束，回答后续跑为 completed |
 | 真实链路 | opencode 2.2.5 + deepseek-v4.1-flash-free：一个 UHP 任务跑通，返回 uhp-opencode-42，output 含 message + function_call + function_call_output（工具调用经 opencode 的 shell 工具真实执行），usage 映射到 UHP Usage |
 
 ## 映射表
@@ -28,6 +29,8 @@ opencode 2.x 的 UHP HarnessDriver 适配器（消费方代码，不是 UHP SDK 
 | session.execution.failed | TurnOutcome.Failed("harness_error", ...) |
 | session.execution.interrupted | TurnOutcome.Cancelled(usage) |
 | POST /api/session/{id}/interrupt | CancelToken 被触发时调用 |
+| permission.asked（工具批准） | TurnSink.ask("confirm", 提示, once/always/reject) → 本轮 incomplete(input_required) |
+| POST /api/session/{id}/permission/{requestID}/reply | 下一轮续跑的答案（input_response）作为决定回给 opencode，然后继续读事件 |
 
 ## 用法
 
@@ -57,8 +60,8 @@ POST 一个要求跑 shell 的任务 → 断言输出包含探针串。
 
 ## 已知限制（如实）
 
-1. 没有接 opencode 的 permission / form 事件 → UHP 的 input_requests 声明为 false，
-   HarnessDriver.capabilities() 返回 inputRequests=false。
+1. permission 事件已接（input_requests=true，含完整的两轮问答测试）；
+   opencode 的 form 事件（多字段表单）尚未映射——permission 是工具批准，form 才是结构化提问。
 2. 没有做工具级预算（max_step 由 UHP 层判定；opencode 侧不截断）。
 3. 没有做文件上传映射：UHP files_input 的内容目前不进 prompt（opencode 支持 files[]，接法是后续工作）。
 4. 模型可用性取决于本机 opencode 的 provider 配置与地区——实测部分免费模型返回 RegionError，

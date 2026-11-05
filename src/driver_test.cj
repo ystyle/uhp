@@ -4,11 +4,13 @@ package uhp_opencode
 
 import std.collection.{ArrayList, HashMap}
 import std.io.*
+import stdx.encoding.json.stream.*
 import std.sync.Mutex
 import std.unittest.*
 import std.unittest.testmacro.*
 import stdx.net.http.*
 import uhp.server.*
+import uhp.transport.*
 import uhp.types.generated.*
 import uhp_opencode.client.*
 
@@ -17,6 +19,7 @@ class FakeState {
     public var prompted: Bool = false
     public var interrupted: Bool = false
     public var sessions: Int64 = 0
+    public var permissionReplied: Option<String> = None
 }
 
 const SID: String = "ocses_test_1"
@@ -81,6 +84,18 @@ class FakeHandler <: HttpRequestHandler {
             ctx.responseBuilder.status(UInt16(200)).header("content-type", "application/json").body("{}")
             return
         }
+        if (method == "POST" && path.contains("/permission/") && path.endsWith("/reply")) {
+            let body = ocReadAllText(ctx.request.body)
+            let decision = match (ocParseJson(body)) {
+                case Some(o) => o.str("decision") ?? ""
+                case None => ""
+            }
+            synchronized(this.state.lock) {
+                this.state.permissionReplied = Some(decision)
+            }
+            ctx.responseBuilder.status(UInt16(204))
+            return
+        }
         if (method == "GET" && path == "/api/event") {
             this.streamEvents(ctx)
             return
@@ -117,6 +132,26 @@ class FakeHandler <: HttpRequestHandler {
             this.emit(w, "session.execution.failed", sidJson)
             return
         }
+        if (this.mode == "permission") {
+            this.emit(w, "permission.asked", permissionAskedJson())
+            let deadline2 = nowMillis() + 10000
+            var decision = ""
+            while (nowMillis() < deadline2) {
+                let d2 = synchronized(this.state.lock) {
+                    this.state.permissionReplied
+                }
+                match (d2) {
+                    case Some(v) =>
+                        decision = v
+                        break
+                    case None => ()
+                }
+                sleep(Duration.millisecond * 10)
+            }
+            this.emit(w, "session.text.delta", textDeltaJson("decided " + decision))
+            this.emit(w, "session.execution.succeeded", sidJson)
+            return
+        }
         if (this.mode == "interrupt") {
             // 慢慢吐，等中断
             var i = 0
@@ -128,8 +163,7 @@ class FakeHandler <: HttpRequestHandler {
                     this.emit(w, "session.execution.interrupted", sidJson)
                     return
                 }
-                this.emit(w, "session.text.delta",
-                    "{\"sessionID\":" + ocJsonQuote(SID) + ",\"delta\":\"tick \"}")
+                this.emit(w, "session.text.delta", textDeltaJson("tick "))
                 sleep(Duration.millisecond * 10)
                 i = i + 1
             }
@@ -145,14 +179,40 @@ class FakeHandler <: HttpRequestHandler {
             "{\"sessionID\":" + ocJsonQuote(SID) + ",\"id\":\"c1\",\"input\":{\"command\":\"echo hi\"}}")
         this.emit(w, "session.tool.success",
             "{\"sessionID\":" + ocJsonQuote(SID) + ",\"id\":\"c1\",\"content\":[{\"type\":\"text\",\"text\":\"hi\\n\"}]}")
-        this.emit(w, "session.text.delta",
-            "{\"sessionID\":" + ocJsonQuote(SID) + ",\"delta\":\"Hello \"}")
-        this.emit(w, "session.text.delta",
-            "{\"sessionID\":" + ocJsonQuote(SID) + ",\"delta\":\"world\"}")
+        this.emit(w, "session.text.delta", textDeltaJson("Hello "))
+        this.emit(w, "session.text.delta", textDeltaJson("world"))
         this.emit(w, "session.usage.updated",
             "{\"sessionID\":" + ocJsonQuote(SID) + ",\"tokens\":{\"input\":10,\"output\":2,\"reasoning\":1,\"cache\":{\"read\":5,\"write\":0}}}")
         this.emit(w, "session.execution.succeeded", sidJson)
     }
+}
+
+func permissionAskedJson(): String {
+    let out = ByteBuffer()
+    let w = JsonWriter(out)
+    w.startObject()
+    w.writeName("sessionID").writeValue(SID)
+    w.writeName("id").writeValue("per_1")
+    w.writeName("action").writeValue("shell")
+    w.writeName("resources")
+    w.startArray()
+    w.writeValue("echo hi")
+    w.endArray()
+    w.writeName("message").writeValue("Allow shell command?")
+    w.endObject()
+    w.flush()
+    return String.fromUtf8(out.bytes())
+}
+
+func textDeltaJson(delta: String): String {
+    let out = ByteBuffer()
+    let w = JsonWriter(out)
+    w.startObject()
+    w.writeName("sessionID").writeValue(SID)
+    w.writeName("delta").writeValue(delta)
+    w.endObject()
+    w.flush()
+    return String.fromUtf8(out.bytes())
 }
 
 func startFake(mode: String): (Server, FakeState) {
@@ -313,11 +373,157 @@ class RecordingSink <: TurnSink {
         ()
     }
 
+    public var asks: ArrayList<(String, String, Array<(String, String)>)> = ArrayList<(String, String, Array<(String, String)>)>()
+
     public func ask(kind: String, prompt: String, options: Array<(String, String)>): String {
+        this.asks.add((kind, prompt, options))
         return "inreq_test"
     }
 
     public func producedFile(filename: String, content: Array<UInt8>): Unit {
         ()
     }
+}
+
+
+@Test
+func permission_becomes_input_request_and_resumes(): Unit {
+    let (server, state) = startFake("permission")
+    let driver = OpencodeDriver(optionsFor(server))
+    let sink1 = RecordingSink()
+    let first = driver.run(TurnContext("uhp-perm", "run it", "m"), sink1, CancelToken())
+    var incomplete = false
+    match (first) {
+        case TurnOutcome.Incomplete(reason, _) =>
+            incomplete = true
+            @Expect(incompleteReasonName(reason), "input_required")
+        case _ => ()
+    }
+    @Expect(incomplete, true)
+    @Expect(sink1.asks.size, 1)
+    let ask1 = sink1.asks[0]
+    @Expect(ask1[0], "confirm")
+    @Expect(ask1[1].contains("Allow"), true)
+    @Expect(ask1[2].size, 3)
+    // 续跑：答案作为权限决定回给 opencode，然后继续读事件
+    let sink2 = RecordingSink()
+    let second = driver.run(TurnContext("uhp-perm", "", "m", answers: ["once"]), sink2, CancelToken())
+    var completed = false
+    match (second) {
+        case TurnOutcome.Completed(_) => completed = true
+        case _ => ()
+    }
+    @Expect(completed, true)
+    @Expect(sink2.text.contains("decided once"), true)
+    let decision = synchronized(state.lock) {
+        state.permissionReplied
+    }
+    @Expect(decision, Some("once"))
+    server.close()
+}
+
+
+// ---- 全栈：UHP 服务端（Engine + OpencodeDriver）-> 假 opencode ----
+func firstTaskBody(): String {
+    let out = ByteBuffer()
+    let w = JsonWriter(out)
+    w.startObject()
+    w.writeName("input").writeValue("run it")
+    w.writeName("metadata")
+    w.startObject()
+    w.writeName("harness_id").writeValue("chrn_oc")
+    w.endObject()
+    w.writeName("stream").writeValue(false)
+    w.endObject()
+    w.flush()
+    return String.fromUtf8(out.bytes())
+}
+
+func answerTaskBody(prev: String, requestId: String, answer: String): String {
+    let out = ByteBuffer()
+    let w = JsonWriter(out)
+    w.startObject()
+    w.writeName("previous_response_id").writeValue(prev)
+    w.writeName("input")
+    w.startArray()
+    w.startObject()
+    w.writeName("type").writeValue("input_response")
+    w.writeName("input_request_id").writeValue(requestId)
+    w.writeName("answer").writeValue(answer)
+    w.endObject()
+    w.endArray()
+    w.writeName("stream").writeValue(false)
+    w.endObject()
+    w.flush()
+    return String.fromUtf8(out.bytes())
+}
+
+func httpJson(url: String, body: String, token: String): String {
+    let client = ClientBuilder().noProxy().readTimeout(Duration.second * 60).build()
+    try {
+        let req = HttpRequestBuilder()
+            .method("POST")
+            .url(url)
+            .header("authorization", "Bearer " + token)
+            .header("UHP-Version", "2026-10-19")
+            .header("content-type", "application/json")
+            .body(body)
+            .build()
+        let rsp = client.send(req)
+        return ocReadAllText(rsp.body)
+    } finally {
+        client.close()
+    }
+}
+
+@Test
+func full_stack_question_flows_through_uhp_server(): Unit {
+    let (ocServer, _) = startFake("permission")
+    let driver = OpencodeDriver(optionsFor(ocServer))
+    let harness = ConfiguredHarness("chrn_oc", "opencode", "opencode", "m", driver)
+    let engine = Engine([harness])
+    let tokens = HashMap<String, String>()
+    tokens["t"] = "p"
+    let uhp = UhpHttpServer(engine, Authenticator(tokens))
+    let server = ServerBuilder()
+        .addr("127.0.0.1")
+        .port(0)
+        .distributor(uhp.distributor())
+        .build()
+    let s = server
+    spawn {
+        s.serve()
+    }
+    let port = waitPort(server)
+    let url = "http://127.0.0.1:" + port.toString()
+    // 1) 第一次：opencode 要工具批准 -> UHP 必须是 incomplete + input_request
+    let first = httpJson(url + "/v1/responses", firstTaskBody(), "t")
+    let firstObj = match (ocParseJson(first)) {
+        case Some(o) => o
+        case None => throw Exception("bad first response")
+    }
+    @Expect(firstObj.str("status"), Some("incomplete"))
+    let firstId = firstObj.str("id") ?? ""
+    var requestId = ""
+    for ((_, itemRaw) in ocJsonStrings(firstObj.raw("output") ?? "[]", "type")) {
+        match (ocParseJson(itemRaw)) {
+            case Some(item) =>
+                if ((item.str("type") ?? "") == "input_request") {
+                    requestId = item.str("id") ?? ""
+                }
+            case None => ()
+        }
+    }
+    @Expect(requestId.startsWith("inreq_"), true)
+    // 2) 第二次：回答问题 -> 服务端把答案当权限决定回给 opencode -> completed
+    let answerBody = answerTaskBody(firstId, requestId, "once")
+    let second = httpJson(url + "/v1/responses", answerBody, "t")
+    let secondObj = match (ocParseJson(second)) {
+        case Some(o) => o
+        case None => throw Exception("bad second response")
+    }
+    @Expect(secondObj.str("status"), Some("completed"))
+    @Expect(second.contains("decided once"), true)
+    server.close()
+    ocServer.close()
 }
