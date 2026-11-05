@@ -20,6 +20,7 @@ class FakeState {
     public var interrupted: Bool = false
     public var sessions: Int64 = 0
     public var permissionReplied: Option<String> = None
+    public var lastPrompt: Option<String> = None
     public var formReplied: Option<String> = None
 }
 
@@ -72,6 +73,10 @@ class FakeHandler <: HttpRequestHandler {
             return
         }
         if (method == "POST" && path.endsWith("/prompt")) {
+            let body = ocReadAllText(ctx.request.body)
+            synchronized(this.state.lock) {
+                this.state.lastPrompt = Some(body)
+            }
             synchronized(this.state.lock) {
                 this.state.prompted = true
             }
@@ -651,6 +656,34 @@ func form_text_becomes_free_text(): Unit {
     }
     match (reply) {
         case Some(body) => @Expect(body.contains(ocJsonQuote("name") + ":" + ocJsonQuote("Ada")), true)
+        case None => @Expect(false, true)
+    }
+    server.close()
+}
+
+
+@Test
+func input_files_are_sent_to_opencode(): Unit {
+    let (server, state) = startFake("happy")
+    let driver = OpencodeDriver(optionsFor(server))
+    let sink = RecordingSink()
+    let files = [TurnFile("token.txt", "text/plain", "the secret".toArray())]
+    let ctx = TurnContext("uhp-files", "read the attached file", "m", files: files)
+    let outcome = driver.run(ctx, sink, CancelToken())
+    var completed = false
+    match (outcome) {
+        case TurnOutcome.Completed(_) => completed = true
+        case _ => ()
+    }
+    @Expect(completed, true)
+    let body = synchronized(state.lock) {
+        state.lastPrompt
+    }
+    match (body) {
+        case Some(b) =>
+            @Expect(b.contains(ocJsonQuote("files")), true)
+            @Expect(b.contains("data:text/plain;base64,", ) , true)
+            @Expect(b.contains(ocJsonQuote("token.txt")), true)
         case None => @Expect(false, true)
     }
     server.close()

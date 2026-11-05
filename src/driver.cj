@@ -162,7 +162,7 @@ public class OpencodeDriver <: HarnessDriver {
                 return TurnOutcome.Failed("harness_error", "opencode permission reply HTTP " + rstatus.toString())
             }
         } else {
-            let (pstatus, _) = http.post("/api/session/" + ocSession + "/prompt", this.promptJson(ctx.input))
+            let (pstatus, _) = http.post("/api/session/" + ocSession + "/prompt", this.promptJson(ctx))
             if (pstatus != UInt16(200)) {
                 return TurnOutcome.Failed("harness_error", "opencode prompt HTTP " + pstatus.toString())
             }
@@ -425,8 +425,27 @@ public class OpencodeDriver <: HarnessDriver {
         }
     }
 
-    private func promptJson(text: String): String {
-        return "{\"text\":" + ocJsonQuote(text) + ",\"delivery\":\"queue\"}"
+    // prompt 写体：文本 + 输入文件（opencode 的 files[] 收 data URI，文件名放 name）
+    private func promptJson(ctx: TurnContext): String {
+        let out = ByteBuffer()
+        let w = JsonWriter(out)
+        w.startObject()
+        w.writeName("text").writeValue(ctx.input)
+        w.writeName("delivery").writeValue("queue")
+        if (ctx.files.size > 0) {
+            w.writeName("files")
+            w.startArray()
+            for (f in ctx.files) {
+                w.startObject()
+                w.writeName("uri").writeValue("data:" + f.mediaType + ";base64," + ocBase64(f.bytes))
+                w.writeName("name").writeValue(f.filename)
+                w.endObject()
+            }
+            w.endArray()
+        }
+        w.endObject()
+        w.flush()
+        return String.fromUtf8(out.bytes())
     }
 
     private func fillUsage(usage: Usage, tokensRaw: Option<String>): Unit {

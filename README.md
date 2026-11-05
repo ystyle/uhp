@@ -19,7 +19,7 @@ opencode 2.x 的 UHP HarnessDriver 适配器（消费方代码，不是 UHP SDK 
 |---|---|
 | POST /api/session | 按 UHP 会话 id 建立一次（同一 UHP 会话的后续任务复用同一个 opencode 会话） |
 | POST /api/session/{id}/model | 钉模型（可选；OpencodeOptions.model） |
-| POST /api/session/{id}/prompt | TurnContext.input |
+| POST /api/session/{id}/prompt | TurnContext.input；TurnContext.files → files[]（data URI + 文件名） |
 | GET /api/event（全局流） | 按 data.sessionID 过滤后消费 |
 | session.text.delta / session.reasoning.delta | TurnSink.textDelta / reasoningDelta |
 | session.tool.input.started（含工具名）+ session.tool.called（含参数） | TurnSink.toolCall(name, args) |
@@ -66,7 +66,7 @@ POST 一个要求跑 shell 的任务 → 断言输出包含探针串。
    form 的映射是「单字段映射成 UHP 的 kind；多字段要求回答一个 JSON 对象」——
    UHP 的 input_request 一次只承载一个答案，所以多字段表单的转换是有损的（已在提示里说明 key 列表）。
 2. 没有做工具级预算（max_step 由 UHP 层判定；opencode 侧不截断）。
-3. 没有做文件上传映射：UHP files_input 的内容目前不进 prompt（opencode 支持 files[]，接法是后续工作）。
+3. 文件输入已映射（files[] 收 data URI）；输出方向尚未处理（agent 生成的产物不会回传成 UHP 文件）。
 4. 模型可用性取决于本机 opencode 的 provider 配置与地区——实测部分免费模型返回 RegionError，
    这是环境问题；适配器只如实把 execution.failed 翻成 UHP 的 failed。
 5. 事件流是全局的：每个 driver 都在读同一流并按 sessionID 过滤；量大时应考虑共享一个订阅器。
