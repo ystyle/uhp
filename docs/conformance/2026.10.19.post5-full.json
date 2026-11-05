@@ -3,7 +3,7 @@
   "protocol_version": "2026-10-19",
   "suite_protocol_version": "2026-10-19",
   "suite_version": "2026.10.19.post5",
-  "generated_at": "2026-11-05T08:02:38Z",
+  "generated_at": "2026-11-05T08:04:37Z",
   "target": "http://127.0.0.1:8471",
   "target_label": "",
   "implementation": {
@@ -17,14 +17,6 @@
     "T-12",
     "T-13",
     "T-14",
-    "R-01",
-    "R-02",
-    "R-03",
-    "R-04",
-    "R-05",
-    "R-06",
-    "R-07",
-    "R-08",
     "EN-01",
     "EN-02",
     "EN-03",
@@ -57,9 +49,9 @@
   },
   "highest_class_passed": "extended",
   "summary": {
-    "pass": 71,
+    "pass": 79,
     "fail": 0,
-    "skip": 33,
+    "skip": 25,
     "error": 0,
     "total": 104
   },
@@ -238,7 +230,7 @@
       "class": "core",
       "spec": "protocol/versions/2026-10-19/lifecycle.md#4-session-lifecycle",
       "outcome": "pass",
-      "detail": "session_id=hsess64570876579756559083714681310915160076"
+      "detail": "session_id=hsess21575612806655085151346647105975948076"
     },
     {
       "id": "T-05",
@@ -350,7 +342,7 @@
       "class": "core",
       "spec": "protocol/versions/2026-10-19/sessions.md#1-continuing-a-session",
       "outcome": "pass",
-      "detail": "session hsess64570876579756559083714681310915160076 extended"
+      "detail": "session hsess21575612806655085151346647105975948076 extended"
     },
     {
       "id": "C-02",
@@ -446,7 +438,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/harnesses.md#4-managing-harnesses",
       "outcome": "pass",
-      "detail": "created, updated and deleted chrn_1538668583990134669818164585249193859794"
+      "detail": "created, updated and deleted chrn_790441429556449238911734730295447798115"
     },
     {
       "id": "F-03",
@@ -526,7 +518,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/plugins.md#5-exporting-a-harness-as-a-plugin",
       "outcome": "pass",
-      "detail": "exported 5 files as 'uhp-conformance-22d24d', reinstalled"
+      "detail": "exported 5 files as 'uhp-conformance-9181fc', reinstalled"
     },
     {
       "id": "P-07",
@@ -582,7 +574,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/sessions.md#6-deleting",
       "outcome": "pass",
-      "detail": "deleted hsess1588306118911806593016117699223603317899, now 404"
+      "detail": "deleted hsess1734900169369589627113405303911022102634, now 404"
     },
     {
       "id": "F-09",
@@ -590,7 +582,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/harnesses.md#53-delete",
       "outcome": "pass",
-      "detail": "kept: hsess972045227130836108614876800363223079335 still reads after its harness was deleted"
+      "detail": "kept: hsess1086963771637221949768832253570000236 still reads after its harness was deleted"
     },
     {
       "id": "F-10",
@@ -598,7 +590,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/harnesses.md#51-create",
       "outcome": "pass",
-      "detail": "chrn_306472227230385146114719130585869687786 returned for both attempts, a changed request refused with 409, made again after its delete"
+      "detail": "chrn_1806104544342580794410244367873551824084 returned for both attempts, a changed request refused with 409, made again after its delete"
     },
     {
       "id": "F-02",
@@ -661,64 +653,64 @@
       "title": "A shared session is published, and the link alone opens it",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/sessions.md#5-session-sharing",
-      "outcome": "skip",
-      "detail": "this server reports session_sharing false, and Sessions \u00a75 is a MAY"
+      "outcome": "pass",
+      "detail": "readable unauthenticated at /v1/shared/1439204900315114693416596252973946423591"
     },
     {
       "id": "R-02",
       "title": "The share can be read back from the endpoint that minted it",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/sessions.md#5-session-sharing",
-      "outcome": "skip",
-      "detail": "this server reports session_sharing false, and Sessions \u00a75 is a MAY"
+      "outcome": "pass",
+      "detail": "GET agrees with POST"
     },
     {
       "id": "R-03",
       "title": "A share id is not a credential for the API",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/sessions.md#5-session-sharing",
-      "outcome": "skip",
-      "detail": "this server reports session_sharing false, and Sessions \u00a75 is a MAY"
+      "outcome": "pass",
+      "detail": "refused on 2 endpoint(s)"
     },
     {
       "id": "R-04",
       "title": "The shared view is read-only",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/sessions.md#5-session-sharing",
-      "outcome": "skip",
-      "detail": "this server reports session_sharing false, and Sessions \u00a75 is a MAY"
+      "outcome": "pass",
+      "detail": "7 write probes refused"
     },
     {
       "id": "R-05",
       "title": "The shared view exposes no credentials",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/sessions.md#5-session-sharing",
-      "outcome": "skip",
-      "detail": "this server reports session_sharing false, and Sessions \u00a75 is a MAY"
+      "outcome": "pass",
+      "detail": "no credential-shaped fields"
     },
     {
       "id": "R-06",
       "title": "Revocation kills every link minted for the session",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/sessions.md#5-session-sharing",
-      "outcome": "skip",
-      "detail": "this server reports session_sharing false, and Sessions \u00a75 is a MAY"
+      "outcome": "pass",
+      "detail": "revoked via DELETE /v1/sessions/hsess21575612806655085151346647105975948076/share; 2 link(s) minted, all now 404/404"
     },
     {
       "id": "R-07",
       "title": "Deleting a session takes its shared view with it",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/sessions.md#6-deleting",
-      "outcome": "skip",
-      "detail": "could not share the disposable session (HTTP 404)"
+      "outcome": "pass",
+      "detail": "session deleted, then HTTP 404"
     },
     {
       "id": "R-08",
       "title": "A bodyless POST publishes, as \u00a75 says it does",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/sessions.md#5-session-sharing",
-      "outcome": "skip",
-      "detail": "this server reports session_sharing false, and Sessions \u00a75 is a MAY"
+      "outcome": "pass",
+      "detail": "published with no body"
     },
     {
       "id": "EN-01",

@@ -144,6 +144,9 @@ public class Engine {
     private var factory: Option<(String) -> HarnessDriver> = None
     private let supportedBases: Array<String>
     private let files: HashMap<String, StoredFile> = HashMap<String, StoredFile>()
+    // 分享（Sessions §5）与每个响应的文本（共享视图用，不存 provider 侧任何东西）
+    private let shares: HashMap<String, ShareRecord> = HashMap<String, ShareRecord>()
+    private let responseTexts: HashMap<String, String> = HashMap<String, String>()
     private let versions: Array<String>
     private let cls: ConformanceClass
     private let capabilitiesValue: Capabilities
@@ -191,6 +194,7 @@ public class Engine {
                 // 创建 harness 的幂等键（F-10）：key 保留在内存里，同 key 返回第一次的结果
                 caps.harnessIdempotency = true
                 caps.plugins = true
+                caps.sessionSharing = true
         }
         this.capabilitiesValue = caps
     }
@@ -388,6 +392,7 @@ public class Engine {
             let seq = channel.lastSeq() + 1
             channel.emit(terminalType, eventWithResponse(terminalType, seq, resp))
             channel.close()
+            this.responseTexts[resp.id] = sink.collectedText()
             // 产物登记：driver 声明它写了哪些文件，SDK 记进会话容器
             match (this.records.get(sessionId)) {
                 case Some(rec) =>
@@ -664,6 +669,76 @@ public class Engine {
         }
     }
 
+    // ---------- 会话分享（Full，Sessions §5） ----------
+
+    // 发布：每次 POST 生成一条新链接；吊销按会话进行（R-06 要求所有链接一起失效）
+    public func publishShare(p: Principal, sessionId: String): ShareRecord {
+        synchronized(this.lock) {
+            let rec = this.recordLocked(p, sessionId)
+            let share = ShareRecord(this.idSource.share(), this.idSource.shareToken(),
+                sessionId, p.name)
+            this.shares[share.token] = share
+            return share
+        }
+    }
+
+    public func getShare(p: Principal, sessionId: String): ShareRecord {
+        synchronized(this.lock) {
+            let _ = this.recordLocked(p, sessionId)
+            for ((_, share) in this.shares) {
+                if (share.sessionId == sessionId && !share.revoked && share.owner == p.name) {
+                    return share
+                }
+            }
+            throw EngineError("session_share_not_found", UInt16(404))
+        }
+    }
+
+    // 吊销：返回被吊销的链接数（0 也回 200 —— 让重试幂等）
+    public func revokeShares(p: Principal, sessionId: String): Int64 {
+        synchronized(this.lock) {
+            let _ = this.recordLocked(p, sessionId)
+            var n = 0
+            for ((_, share) in this.shares) {
+                if (share.sessionId == sessionId && share.owner == p.name && !share.revoked) {
+                    share.revoked = true
+                    n = n + 1
+                }
+            }
+            return n
+        }
+    }
+
+    // 共享视图：**无鉴权**（这就是分享的意义），但只读、只含对话内容、不含任何配置。
+    public func sharedView(token: String): String {
+        synchronized(this.lock) {
+            let share = match (this.shares.get(token)) {
+                case Some(s) => s
+                case None => throw EngineError("session_share_not_found", UInt16(404))
+            }
+            if (share.revoked) {
+                throw EngineError("session_share_not_found", UInt16(404))
+            }
+            let rec = match (this.records.get(share.sessionId)) {
+                case Some(r) => r
+                case None => throw EngineError("session_share_not_found", UInt16(404))
+            }
+            let turns = ArrayList<TurnItem>()
+            for (rid in rec.responseIds) {
+                match (this.stored.get(rid)) {
+                    case Some(s) =>
+                        let t = TurnItem()
+                        t.id = rid
+                        t.status = s.response.status
+                        t.created_at = Some(s.response.created_at)
+                        turns.add(t)
+                    case None => ()
+                }
+            }
+            return sharedViewJson(rec, turns.toArray(), this.responseTexts)
+        }
+    }
+
     // 删除会话：会话、响应、产物一并不可达（Sessions §6）
     public func deleteSession(p: Principal, sessionId: String): Unit {
         synchronized(this.lock) {
@@ -679,6 +754,11 @@ public class Engine {
             }
             for (fid in toRemove) {
                 this.files.remove(fid)
+            }
+            for ((_, share) in this.shares) {
+                if (share.sessionId == sessionId) {
+                    share.revoked = true
+                }
             }
             this.records.remove(sessionId)
             this.sessions.remove(sessionId)
@@ -849,6 +929,14 @@ class EngineSink <: TurnSink {
     }
 
     private let artifacts: ArrayList<(String, Array<UInt8>)> = ArrayList<(String, Array<UInt8>)>()
+
+    public func collectedText(): String {
+        let out = StringBuilder()
+        for (t in this.texts) {
+            out.append(t)
+        }
+        return out.toString()
+    }
 
     public func producedFile(filename: String, content: Array<UInt8>): Unit {
         this.artifacts.add((filename, content))

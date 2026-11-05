@@ -102,6 +102,14 @@ public class UhpHttpServer {
             return
         }
 
+        // 共享视图免鉴权：持有链接就能读，这正是 SessionShare 的定义。
+        // 但只允许 GET；其它方法落到下面同一张路由表上，因而不会命中任何写路径（R-04）。
+        if (path.startsWith("/v1/shared/") && method == "GET") {
+            let token = path["/v1/shared/".size..path.size]
+            this.writeJson(ctx, UInt16(200), this.engine.sharedView(token), version: Some(usedVersion))
+            return
+        }
+
         let principal = match (this.auth.authenticate(ctx.request.headers)) {
             case Some(p) => p
             case None =>
@@ -260,6 +268,33 @@ public class UhpHttpServer {
             if (seg[5] == "pdf" && method == "GET") {
                 // 不实现预览：规范要求 501 preview_unavailable，而不是坏的/空的 PDF
                 this.writeError(ctx, UInt16(501), "preview_unavailable", None)
+                return
+            }
+        }
+        if (seg.size == 4 && seg[0] == "v1" && seg[1] == "sessions" && seg[3] == "share") {
+            if (method == "POST") {
+                // 体可选：无体 = 发布；{"enabled": false} = 吊销（§5 只说无体=发布，这里是超集）
+                let body = readAllText(ctx.request.body)
+                let disable = body.contains("\"enabled\"") && body.contains("false")
+                if (disable) {
+                    let n = this.engine.revokeShares(principal, seg[2])
+                    this.writeJson(ctx, UInt16(200), shareRevokedJson(seg[2], n),
+                        version: Some(usedVersion))
+                    return
+                }
+                let share = this.engine.publishShare(principal, seg[2])
+                this.writeJson(ctx, UInt16(200), share.toJson(), version: Some(usedVersion))
+                return
+            }
+            if (method == "GET") {
+                let share = this.engine.getShare(principal, seg[2])
+                this.writeJson(ctx, UInt16(200), share.toJson(), version: Some(usedVersion))
+                return
+            }
+            if (method == "DELETE") {
+                let n = this.engine.revokeShares(principal, seg[2])
+                this.writeJson(ctx, UInt16(200), shareRevokedJson(seg[2], n),
+                    version: Some(usedVersion))
                 return
             }
         }
@@ -586,6 +621,20 @@ func quoteJoin(items: Array<String>): String {
 
 // 会话列表载荷：{sessions:[...], next_cursor: string|null}
 // 规范要求末页显式给 null，不能让客户端靠「本页不满」来猜。
+// 吊销应答：session_id + 本次吊销了几条链接
+func shareRevokedJson(sessionId: String, n: Int64): String {
+    let out = ByteBuffer()
+    let w = JsonWriter(out)
+    w.startObject()
+    w.writeName("object").writeValue("session.share")
+    w.writeName("session_id").writeValue(sessionId)
+    w.writeName("enabled").writeValue(false)
+    w.writeName("revoked").writeValue(n)
+    w.endObject()
+    w.flush()
+    return String.fromUtf8(out.bytes())
+}
+
 func sessionsListJson(items: Array<Session>, next: Option<String>): String {
     let out = ByteBuffer()
     let w = JsonWriter(out)

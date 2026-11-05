@@ -35,6 +35,15 @@ public class IdSource {
         return "inreq_" + hex()
     }
 
+    public func share(): String {
+        return "shr_" + hex()
+    }
+
+    // 分享链接里的 token：与 share id 分开，泄漏一个不会顺带泄漏另一个
+    public func shareToken(): String {
+        return hex()
+    }
+
     private func hex(): String {
         let a = this.rnd.nextUInt64().toString()
         let b = this.rnd.nextUInt64().toString()
