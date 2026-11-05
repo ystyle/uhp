@@ -31,7 +31,7 @@ UHP 定义「产品如何通过 HTTP 驱动一个完整的 agent harness」：�
 | **官方一致性套件 extended** | ✅ **50/50** | 报告：`docs/conformance/2026.10.19.post5-extended.json` |
 | **官方一致性套件 full** | ⚠️ **60 pass / 0 fail / 44 skip** | harness 管理全过；skip 全是未实现的可选能力。报告：`docs/conformance/2026.10.19.post5-full.json` |
 | 会话分享（R 组） | ❌ 未开始 | `POST/GET/DELETE /v1/sessions/{id}/share` 与只读视图 |
-| plugins（P 组） | ❌ 未开始 | Agent Plugins 包校验、派生态、组合、导出 |
+| plugins（P 组） | ⚠️ **10/11** | Agent Plugins 包校验/派生态/组合/导出已实现；P-11 需 driver 侧真执行 MCP 工具 |
 | environments / memories | ❌ 未开始 | 两个章级可选能力 |
 
 > 现在能用：`UhpClient` 对接任意 UHP 服务端；`UhpHttpServer` + `HarnessDriver` 起一个通过 core + extended 全部检查、full 类必做检查全过的 UHP 服务端（含 harness 增删改、技能包、文件上传/产物下载、会话列举与删除）。
