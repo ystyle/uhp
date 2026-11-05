@@ -5,10 +5,12 @@
 package uhp.server
 
 import std.collection.{ArrayList, HashMap}
+import std.convert.*
 import std.io.*
 import stdx.encoding.json.stream.*
 import stdx.net.http.*
 import uhp.types.codec.*
+import uhp.types.generated.*
 import uhp.types.handwritten.*
 
 // token -> principal 名。签发 token 不在协议范围内（Architecture §5），由宿主决定。
@@ -62,7 +64,9 @@ public class UhpHttpServer {
         } catch (e: JsonProtocolException) {
             this.writeError(ctx, UInt16(400), "invalid_input", None)
         } catch (e: Exception) {
-            // 不把内部异常文本泄漏给调用方（错误封套的 message 必须安全可展示）
+            // 不把内部异常文本泄漏给调用方（错误封套的 message 必须安全可展示），
+            // 但要写到 stderr 供运维定位——规范要求「扣下的 detail 要记日志」。
+            eprintln("uhp: internal error: " + e.toString())
             this.writeError(ctx, UInt16(500), "server_error", None)
         }
     }
@@ -146,6 +150,62 @@ public class UhpHttpServer {
             }
             if (seg.size == 4 && seg[3] == "input_items" && method == "GET") {
                 this.writeJson(ctx, UInt16(200), "{\"object\":\"list\",\"data\":[]}", version: Some(usedVersion))
+                return
+            }
+        }
+        // ---------- Extended：会话列举 / 检查 / turns / 产物 ----------
+        if (seg.size == 2 && seg[0] == "v1" && seg[1] == "sessions" && method == "GET") {
+            let limit = queryInt(ctx, "limit", 20)
+            let cursor = queryString(ctx, "cursor")
+            let (items, next) = this.engine.listSessions(principal, limit, cursor)
+            this.writeJson(ctx, UInt16(200), sessionsListJson(items, next), version: Some(usedVersion))
+            return
+        }
+        if (seg.size == 3 && seg[0] == "v1" && seg[1] == "sessions" && method == "GET") {
+            this.writeJson(ctx, UInt16(200), jsonOf(this.engine.getSession(principal, seg[2])),
+                version: Some(usedVersion))
+            return
+        }
+        if (seg.size == 4 && seg[0] == "v1" && seg[1] == "sessions" && seg[3] == "turns" && method == "GET") {
+            let turns = SessionTurns()
+            turns.turns = this.engine.sessionTurns(principal, seg[2])
+            this.writeJson(ctx, UInt16(200), jsonOf(turns), version: Some(usedVersion))
+            return
+        }
+        if (seg.size == 4 && seg[0] == "v1" && seg[1] == "sessions" && seg[3] == "files" && method == "GET") {
+            let list = SessionFileList()
+            list.files = this.engine.sessionFiles(principal, seg[2])
+            this.writeJson(ctx, UInt16(200), jsonOf(list), version: Some(usedVersion))
+            return
+        }
+        if (path == "/v1/files" && method == "POST") {
+            let ct = ctx.request.headers.getFirst("content-type") ?? ""
+            let raw = readAllBytes(ctx.request.body)
+            let parsed = parseMultipart(raw, ct)
+            match (parsed) {
+                case Some(p) =>
+                    let file = this.engine.uploadFile(principal, p.filename, p.content)
+                    this.writeJson(ctx, UInt16(200), jsonOf(file), version: Some(usedVersion))
+                case None =>
+                    this.writeError(ctx, UInt16(400), "invalid_input", None)
+            }
+            return
+        }
+        if (seg.size == 6 && seg[0] == "v1" && seg[1] == "containers" && seg[3] == "files") {
+            if (seg[5] == "content" && method == "GET") {
+                let f = this.engine.downloadFile(principal, seg[2], seg[4])
+                ctx.responseBuilder
+                    .status(UInt16(200))
+                    .header("content-type", f.contentType())
+                    .header("x-content-type-options", "nosniff")
+                    .header("content-disposition", "attachment; filename=" + f.filename)
+                    .header("UHP-Version", usedVersion)
+                    .body(f.bytes)
+                return
+            }
+            if (seg[5] == "pdf" && method == "GET") {
+                // 不实现预览：规范要求 501 preview_unavailable，而不是坏的/空的 PDF
+                this.writeError(ctx, UInt16(501), "preview_unavailable", None)
                 return
             }
         }
@@ -314,8 +374,8 @@ func parseTaskRequest(body: String): ParsedTaskRequest {
     r.startObject()
     while (true) {
         let name = match (r.peek()) {
-            case Some(EndObject) => break
-            case Some(Name) => r.readName()
+            case Some(JsonToken.EndObject) => break
+            case Some(JsonToken.Name) => r.readName()
             case _ => throw JsonProtocolException("bad json")
         }
         match (name) {
@@ -342,15 +402,15 @@ func parseTaskRequest(body: String): ParsedTaskRequest {
 
 func readInput(r: JsonReader): String {
     match (r.peek()) {
-        case Some(String) => return r.readValue<String>()
-        case Some(BeginArray) =>
+        case Some(JsonToken.JsonString) => return r.readValue<String>()
+        case Some(JsonToken.BeginArray) =>
             // item[]：把 input_text 拼起来（其余 item 类型 M2 忽略）
             let parts = ArrayList<String>()
             r.startArray()
             while (true) {
                 match (r.peek()) {
-                    case Some(EndArray) => break
-                    case Some(BeginObject) =>
+                    case Some(JsonToken.EndArray) => break
+                    case Some(JsonToken.BeginObject) =>
                         let text = readItemText(r)
                         if (text.size > 0) {
                             parts.add(text)
@@ -372,8 +432,8 @@ func readItemText(r: JsonReader): String {
     r.startObject()
     while (true) {
         let name = match (r.peek()) {
-            case Some(EndObject) => break
-            case Some(Name) => r.readName()
+            case Some(JsonToken.EndObject) => break
+            case Some(JsonToken.Name) => r.readName()
             case _ =>
                 r.skip()
                 continue
@@ -381,12 +441,12 @@ func readItemText(r: JsonReader): String {
         match (name) {
             case "content" =>
                 match (r.peek()) {
-                    case Some(BeginArray) =>
+                    case Some(JsonToken.BeginArray) =>
                         r.startArray()
                         while (true) {
                             match (r.peek()) {
-                                case Some(EndArray) => break
-                                case Some(BeginObject) =>
+                                case Some(JsonToken.EndArray) => break
+                                case Some(JsonToken.BeginObject) =>
                                     let t = readPartText(r)
                                     if (t.size > 0) {
                                         found = if (found.size == 0) { t } else { found + t }
@@ -409,8 +469,8 @@ func readPartText(r: JsonReader): String {
     r.startObject()
     while (true) {
         let name = match (r.peek()) {
-            case Some(EndObject) => break
-            case Some(Name) => r.readName()
+            case Some(JsonToken.EndObject) => break
+            case Some(JsonToken.Name) => r.readName()
             case _ =>
                 r.skip()
                 continue
@@ -429,8 +489,8 @@ func readHarnessId(r: JsonReader): Option<String> {
     r.startObject()
     while (true) {
         let name = match (r.peek()) {
-            case Some(EndObject) => break
-            case Some(Name) => r.readName()
+            case Some(JsonToken.EndObject) => break
+            case Some(JsonToken.Name) => r.readName()
             case _ =>
                 r.skip()
                 continue
@@ -462,6 +522,54 @@ func quoteJoin(items: Array<String>): String {
         quoted.add("\"" + i + "\"")
     }
     return String.join(quoted.toArray(), delimiter: ",")
+}
+
+// 会话列表载荷：{sessions:[...], next_cursor: string|null}
+// 规范要求末页显式给 null，不能让客户端靠「本页不满」来猜。
+func sessionsListJson(items: Array<Session>, next: Option<String>): String {
+    let out = ByteBuffer()
+    let w = JsonWriter(out)
+    w.startObject()
+    w.writeName("sessions")
+    w.startArray()
+    for (s in items) {
+        w.jsonValue(jsonOf(s))
+    }
+    w.endArray()
+    match (next) {
+        case Some(n) => w.writeName("next_cursor").writeValue(n)
+        case None => w.writeName("next_cursor").writeNullValue()
+    }
+    w.endObject()
+    w.flush()
+    return String.fromUtf8(out.bytes())
+}
+
+func queryString(ctx: HttpContext, name: String): Option<String> {
+    let q = match (ctx.request.url.query) {
+        case Some(v) => v
+        case None => return None
+    }
+    for (pair in q.split("&")) {
+        let idx = match (pair.indexOf("=")) {
+            case Some(i) => i
+            case None => continue
+        }
+        if (pair[0..idx] == name) {
+            return Some(pair[idx + 1..pair.size])
+        }
+    }
+    return None
+}
+
+func queryInt(ctx: HttpContext, name: String, fallback: Int64): Int64 {
+    return match (queryString(ctx, name)) {
+        case Some(v) => match (Int64.tryParse(v)) {
+            case Some(n) => if (n > 0) { n } else { fallback }
+            case None => fallback
+        }
+        case None => fallback
+    }
 }
 
 func readAllText(body: InputStream): String {

@@ -16,7 +16,7 @@ UHP 定义「产品如何通过 HTTP 驱动一个完整的 agent harness」：�
 
 ## 当前状态
 
-**M0/M1/M2 已完成；官方一致性套件 core 类全过。** 明确区分「已经能用」与「还没写」：
+**M0/M1/M2 已完成；官方一致性套件 core + extended 两类全过。** 明确区分「已经能用」与「还没写」：
 
 | 部分 | 状态 | 说明 |
 |---|---|---|
@@ -28,11 +28,12 @@ UHP 定义「产品如何通过 HTTP 驱动一个完整的 agent harness」：�
 | 客户端（发现/协商/错误映射/幂等/流消费） | ✅ | 无网络可测（传输抽象 + 桩） |
 | 服务端（引擎 + HTTP 层 + HarnessDriver） | ✅ | 路由/鉴权/版本/状态机/事件通道/能力门控/SSE |
 | **官方一致性套件 core** | ✅ **41/41** | 报告：`docs/conformance/2026.10.19.post5-core.json`（suite 2026.10.19.post5） |
-| extended / full 类 | ❌ 未开始 | 文件端点、会话列表/分享、harness 管理 |
+| **官方一致性套件 extended** | ✅ **50/50** | 报告：`docs/conformance/2026.10.19.post5-extended.json` |
+| full 类 | ❌ 未开始 | harness 管理（含退役/幂等）、会话分享/删除 |
 | environments / plugins / memories | ❌ 未开始 | 三个章级可选能力 |
 
-> 现在能用：`UhpClient` 对接任意 UHP 服务端；`UhpHttpServer` + `HarnessDriver` 起一个通过 core 类一致性检查的 UHP 服务端。
-> 还没有：文件上传/下载（extended）、harness 管理（full）、三个可选能力。
+> 现在能用：`UhpClient` 对接任意 UHP 服务端；`UhpHttpServer` + `HarnessDriver` 起一个通过 core + extended 两类一致性检查的 UHP 服务端（含文件上传/产物下载、会话列举与 turns）。
+> 还没有：harness 管理（full）、会话分享/删除、三个章级可选能力（environments / plugins / memories）。
 
 ## 目录
 

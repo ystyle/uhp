@@ -69,6 +69,9 @@ public interface TurnSink {
     func toolCallArgsDelta(delta: String): Unit
     // MCP 挂掉之类的降级必须可见，不能静默
     func degrade(reason: String): Unit
+    // driver 在会话工作目录里产出的文件。由 driver 声明（它拥有工作目录与工具），
+    // SDK 负责登记成产物（Session -> Container -> File）。
+    func producedFile(filename: String, content: Array<UInt8>): Unit
 }
 
 public class HarnessCapabilities {
@@ -96,6 +99,7 @@ public enum ScriptStep {
     | Reasoning(String)
     | ToolArgs(String)
     | Degrade(String)
+    | File(String, String)      // 文件名, 内容（UTF-8 文本）
 }
 
 public class ScriptedHarness <: HarnessDriver {
@@ -149,6 +153,7 @@ public class ScriptedHarness <: HarnessDriver {
                 case Reasoning(t) => sink.reasoningDelta(t)
                 case ToolArgs(t) => sink.toolCallArgsDelta(t)
                 case Degrade(t) => sink.degrade(t)
+                case File(name, content) => sink.producedFile(name, content.toArray())
             }
             if (this.delayMillis > 0) {
                 sleep(Duration.millisecond * this.delayMillis)

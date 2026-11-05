@@ -5,6 +5,7 @@
 package uhp.server
 
 import std.collection.{ArrayList, HashMap}
+import std.convert.*
 import std.sync.Mutex
 import std.time.DateTime
 import stdx.encoding.json.stream.*
@@ -130,6 +131,9 @@ public class Engine {
     private let stored: HashMap<String, StoredResponse> = HashMap<String, StoredResponse>()
     private let sessions: HashMap<String, SessionState> = HashMap<String, SessionState>()
     private let sessionOwners: HashMap<String, String> = HashMap<String, String>()
+    // 会话元数据（列表/检查/turns 用）与产物存储
+    private let records: HashMap<String, SessionRecord> = HashMap<String, SessionRecord>()
+    private let files: HashMap<String, StoredFile> = HashMap<String, StoredFile>()
     private let versions: Array<String>
     private let cls: ConformanceClass
     private let capabilitiesValue: Capabilities
@@ -149,6 +153,14 @@ public class Engine {
         caps.streaming = true
         caps.sessions = true
         caps.cancellation = true
+        // Extended 才要求文件与会话列举；能力与类必须自洽（Lifecycle §2）
+        match (cls) {
+            case ConformanceClass.Core => ()
+            case _ =>
+                caps.filesInput = true
+                caps.filesOutput = true
+                caps.sessionListing = true
+        }
         this.capabilitiesValue = caps
     }
 
@@ -265,6 +277,9 @@ public class Engine {
                 session = SessionState(sessionId, harnessId)
                 this.sessions[sessionId] = session
                 this.sessionOwners[sessionId] = p.name
+                let containerId = this.idSource.container()
+                this.records[sessionId] = SessionRecord(sessionId, harnessId, p.name, containerId,
+                    titleOf(req.input))
                 previous = None
         }
         if (!session.tryBegin(responseId)) {
@@ -298,6 +313,12 @@ public class Engine {
         // 事件 0：response.created（规范：created 必须是流的第一个事件）
         channel.emit("response.created", eventWithResponse("response.created", 0, resp))
         this.stored[responseId] = StoredResponse(p.name, resp, channel)
+        match (this.records.get(sessionId)) {
+            case Some(rec) =>
+                rec.responseIds.add(responseId)
+                rec.updatedAt = nowSeconds()
+            case None => ()
+        }
 
         // driver 在后台跑：background / 流式请求要能立刻拿到 in_progress 与事件通道。
         // 校验（harness/session/scope）已经在锁内完成，所以 4xx 能赶在响应头之前返回。
@@ -328,6 +349,15 @@ public class Engine {
             let seq = channel.lastSeq() + 1
             channel.emit(terminalType, eventWithResponse(terminalType, seq, resp))
             channel.close()
+            // 产物登记：driver 声明它写了哪些文件，SDK 记进会话容器
+            match (this.records.get(sessionId)) {
+                case Some(rec) =>
+                    for ((name, content) in sink.producedFiles()) {
+                        let fid = this.idSource.file()
+                        this.files[fid] = StoredFile(fid, rec.containerId, sessionId, rec.owner, name, content)
+                    }
+                case None => ()
+            }
             match (this.sessions.get(sessionId)) {
                 case Some(s) => s.finish()
                 case None => ()
@@ -442,6 +472,127 @@ public class Engine {
         }
     }
 
+    // ---------- 会话（Extended） ----------
+
+    public func listSessions(p: Principal, limit: Int64, cursor: Option<String>): (Array<Session>, Option<String>) {
+        synchronized(this.lock) {
+            let all = ArrayList<Session>()
+            for ((_, rec) in this.records) {
+                if (rec.owner == p.name) {
+                    all.add(toSession(rec))
+                }
+            }
+            // 简单游标：偏移量编码成不透明串；下一页为空时 next_cursor 为 None（规范要求显式报末页）
+            let offset = match (cursor) {
+                case Some(c) => Int64.parse(c)
+                case None => 0
+            }
+            let out = ArrayList<Session>()
+            var i = offset
+            while (i < all.size && out.size < limit) {
+                out.add(all[i])
+                i = i + 1
+            }
+            let next: Option<String> = if (i < all.size) { Some(i.toString()) } else { None }
+            return (out.toArray(), next)
+        }
+    }
+
+    public func getSession(p: Principal, sessionId: String): Session {
+        synchronized(this.lock) {
+            return toSession(this.recordLocked(p, sessionId))
+        }
+    }
+
+    public func sessionTurns(p: Principal, sessionId: String): Array<TurnItem> {
+        synchronized(this.lock) {
+            let rec = this.recordLocked(p, sessionId)
+            let out = ArrayList<TurnItem>()
+            for (rid in rec.responseIds) {
+                match (this.stored.get(rid)) {
+                    case Some(s) =>
+                        let t = TurnItem()
+                        t.id = rid
+                        t.status = s.response.status
+                        t.created_at = Some(s.response.created_at)
+                        out.add(t)
+                    case None => ()
+                }
+            }
+            return out.toArray()
+        }
+    }
+
+    // ---------- 文件（Extended） ----------
+
+    public func uploadFile(p: Principal, filename: String, content: Array<UInt8>): File {
+        synchronized(this.lock) {
+            let fid = this.idSource.file()
+            // 上传的文件先挂在 principal 专属的「收件箱」容器里；被任务引用时不复制字节。
+            let container = "cntr_upload_" + p.name
+            this.files[fid] = StoredFile(fid, container, "", p.name, filename, content)
+            return toFile(this.files[fid])
+        }
+    }
+
+    public func sessionFiles(p: Principal, sessionId: String): Array<File> {
+        synchronized(this.lock) {
+            let rec = this.recordLocked(p, sessionId)
+            let out = ArrayList<File>()
+            for ((_, f) in this.files) {
+                if (f.sessionId == sessionId && f.containerId == rec.containerId) {
+                    out.add(toFile(f))
+                }
+            }
+            return out.toArray()
+        }
+    }
+
+    // 下载：container/file 必须匹配，否则 404（路径穿越探针因此自然失败）
+    public func downloadFile(p: Principal, containerId: String, fileId: String): StoredFile {
+        synchronized(this.lock) {
+            let f = match (this.files.get(fileId)) {
+                case Some(v) => v
+                case None => throw EngineError("file_not_found", UInt16(404))
+            }
+            if (f.owner != p.name || f.containerId != containerId) {
+                // 跨 principal 与跨容器一律 404，不透露存在性
+                throw EngineError("file_not_found", UInt16(404))
+            }
+            return f
+        }
+    }
+
+    private func recordLocked(p: Principal, sessionId: String): SessionRecord {
+        return match (this.records.get(sessionId)) {
+            case Some(r) => if (r.owner == p.name) { r } else { throw EngineError("session_not_found", UInt16(404)) }
+            case None => throw EngineError("session_not_found", UInt16(404))
+        }
+    }
+
+    private func toSession(rec: SessionRecord): Session {
+        let s = Session()
+        s.id = rec.id
+        s.objectKind = Some("session")
+        s.harness_id = rec.harnessId
+        s.title = rec.title
+        s.status = "completed"
+        s.created_at = rec.createdAt
+        s.updated_at = rec.updatedAt
+        return s
+    }
+
+    private func toFile(f: StoredFile): File {
+        let out = File()
+        out.id = f.id
+        out.objectKind = Some("file")
+        out.filename = f.filename
+        out.bytes = Some(f.bytes.size)
+        out.created_at = Some(f.createdAt)
+        out.extras["container_id"] = "\"" + f.containerId + "\""
+        return out
+    }
+
     private func getStoredLocked(p: Principal, id: String): StoredResponse {
         return match (this.stored.get(id)) {
             // 跨 principal 一律 404（403 会确认 id 存在）
@@ -481,6 +632,16 @@ class EngineSink <: TurnSink {
     public func toolCallArgsDelta(delta: String): Unit {
         this.toolArgs.add(delta)
         this.emitDelta("response.function_call_arguments.delta", delta)
+    }
+
+    private let artifacts: ArrayList<(String, Array<UInt8>)> = ArrayList<(String, Array<UInt8>)>()
+
+    public func producedFile(filename: String, content: Array<UInt8>): Unit {
+        this.artifacts.add((filename, content))
+    }
+
+    public func producedFiles(): Array<(String, Array<UInt8>)> {
+        return this.artifacts.toArray()
     }
 
     public func degrade(reason: String): Unit {
@@ -525,6 +686,15 @@ class EngineSink <: TurnSink {
 }
 
 // ---------- 序列化辅助 ----------
+
+// 会话标题：取输入首行、截断到 60 个字符（按 rune 切，避免切坏 UTF-8）
+func titleOf(input: String): String {
+    let runes = input.toRuneArray()
+    let limit = if (runes.size > 60) { 60 } else { runes.size }
+    let head = String(runes[0..limit])
+    // 标题是单行展示：把换行换成空格
+    return head.replace("\n", " ")
+}
 
 func nowSeconds(): Int64 {
     return DateTime.now().toUnixTimeStamp().toSeconds()

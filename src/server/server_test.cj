@@ -111,6 +111,12 @@ class RecordingSink <: TurnSink {
     public func degrade(reason: String): Unit {
         this.degraded.add(reason)
     }
+
+    public func producedFile(filename: String, content: Array<UInt8>): Unit {
+        this.files.add((filename, String.fromUtf8(content)))
+    }
+
+    public var files: ArrayList<(String, String)> = ArrayList<(String, String)>()
 }
 
 @Test
