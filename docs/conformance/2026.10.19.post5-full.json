@@ -3,7 +3,7 @@
   "protocol_version": "2026-10-19",
   "suite_protocol_version": "2026-10-19",
   "suite_version": "2026.10.19.post5",
-  "generated_at": "2026-11-05T08:16:00Z",
+  "generated_at": "2026-11-05T08:24:51Z",
   "target": "http://127.0.0.1:8471",
   "target_label": "",
   "implementation": {
@@ -15,19 +15,8 @@
   "conformant_with_skips": true,
   "skipped_not_verified": [
     "EN-09",
-    "ME-01",
-    "ME-02",
-    "ME-03",
-    "ME-04",
-    "ME-05",
-    "ME-06",
-    "ME-07",
-    "ME-09",
     "ME-10",
-    "ME-11",
-    "ME-12",
-    "ME-13",
-    "ME-08"
+    "ME-11"
   ],
   "coverage": {
     "complete": true,
@@ -38,9 +27,9 @@
   },
   "highest_class_passed": "extended",
   "summary": {
-    "pass": 90,
+    "pass": 101,
     "fail": 0,
-    "skip": 14,
+    "skip": 3,
     "error": 0,
     "total": 104
   },
@@ -219,7 +208,7 @@
       "class": "core",
       "spec": "protocol/versions/2026-10-19/lifecycle.md#4-session-lifecycle",
       "outcome": "pass",
-      "detail": "session_id=hsess10880969190069245667241867828428126025"
+      "detail": "session_id=hsess1133368698697529269211124734383985386814"
     },
     {
       "id": "T-05",
@@ -331,7 +320,7 @@
       "class": "core",
       "spec": "protocol/versions/2026-10-19/sessions.md#1-continuing-a-session",
       "outcome": "pass",
-      "detail": "session hsess10880969190069245667241867828428126025 extended"
+      "detail": "session hsess1133368698697529269211124734383985386814 extended"
     },
     {
       "id": "C-02",
@@ -427,7 +416,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/harnesses.md#4-managing-harnesses",
       "outcome": "pass",
-      "detail": "created, updated and deleted chrn_875773856900130357713052290449508713411"
+      "detail": "created, updated and deleted chrn_1585367596384189849618390934174018119914"
     },
     {
       "id": "F-03",
@@ -507,7 +496,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/plugins.md#5-exporting-a-harness-as-a-plugin",
       "outcome": "pass",
-      "detail": "exported 5 files as 'uhp-conformance-ec2adb', reinstalled"
+      "detail": "exported 5 files as 'uhp-conformance-3f5686', reinstalled"
     },
     {
       "id": "P-07",
@@ -563,7 +552,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/sessions.md#6-deleting",
       "outcome": "pass",
-      "detail": "deleted hsess120098211854743152951899362801353535745, now 404"
+      "detail": "deleted hsess121922279012705419358295659847543115957, now 404"
     },
     {
       "id": "F-09",
@@ -571,7 +560,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/harnesses.md#53-delete",
       "outcome": "pass",
-      "detail": "kept: hsess24849012736831274052470515864750477075 still reads after its harness was deleted"
+      "detail": "kept: hsess63929759808547473488346905559579202964 still reads after its harness was deleted"
     },
     {
       "id": "F-10",
@@ -579,7 +568,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/harnesses.md#51-create",
       "outcome": "pass",
-      "detail": "chrn_507279488124927044214421321267798827370 returned for both attempts, a changed request refused with 409, made again after its delete"
+      "detail": "chrn_141423738347553797717242603260414416806 returned for both attempts, a changed request refused with 409, made again after its delete"
     },
     {
       "id": "F-02",
@@ -627,7 +616,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/tasks.md#32-asking-the-person",
       "outcome": "pass",
-      "detail": "asked inreq_138809628349825316143259725769234265588 (choice, 2 options); 422 outside the options, 409 for a stale id, answered once (completed), 409 again"
+      "detail": "asked inreq_1504512599971463384613882150488444377537 (choice, 2 options); 422 outside the options, 409 for a stale id, answered once (completed), 409 again"
     },
     {
       "id": "T-14",
@@ -643,7 +632,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/sessions.md#5-session-sharing",
       "outcome": "pass",
-      "detail": "readable unauthenticated at /v1/shared/109683452683535610167452260667818281445"
+      "detail": "readable unauthenticated at /v1/shared/732304809837404801010237253100327482275"
     },
     {
       "id": "R-02",
@@ -683,7 +672,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/sessions.md#5-session-sharing",
       "outcome": "pass",
-      "detail": "revoked via DELETE /v1/sessions/hsess10880969190069245667241867828428126025/share; 2 link(s) minted, all now 404/404"
+      "detail": "revoked via DELETE /v1/sessions/hsess1133368698697529269211124734383985386814/share; 2 link(s) minted, all now 404/404"
     },
     {
       "id": "R-07",
@@ -707,7 +696,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/environments.md#2-the-environment-object",
       "outcome": "pass",
-      "detail": "henv_1309400848854936452712257683034745958528 at /home/ystyle/Projects/Cangjie/uhp-cj/.uhp-envs/uhp-conformance-bf24a8"
+      "detail": "henv_376067264618877462512979889526687913124 at /home/ystyle/Projects/Cangjie/uhp-cj/.uhp-envs/uhp-conformance-7915f5"
     },
     {
       "id": "EN-02",
@@ -755,7 +744,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/environments.md#6-what-a-session-sees",
       "outcome": "pass",
-      "detail": "read /home/ystyle/Projects/Cangjie/uhp-cj/.uhp-envs/uhp-conformance-bf24a8/data/hello.txt; write refused; metadata.environment reported"
+      "detail": "read /home/ystyle/Projects/Cangjie/uhp-cj/.uhp-envs/uhp-conformance-7915f5/data/hello.txt; write refused; metadata.environment reported"
     },
     {
       "id": "EN-09",
@@ -778,64 +767,64 @@
       "title": "A memory is a node in a tree: it reads back with its parent, its ancestors and the caller's privileges",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/memories.md#2-the-memory-object",
-      "outcome": "skip",
-      "detail": "this server reports the memories capability false or absent, and the Memories chapter is optional at every class"
+      "outcome": "pass",
+      "detail": "hmem_22409111408238335813654676481995627339 > hmem_134311671350989299897807579909284182879 on provider 'uhp-local'"
     },
     {
       "id": "ME-02",
       "title": "A stated record is kept as stated, marked untrusted, and its writer is the server's stamp",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/memories.md#4-records",
-      "outcome": "skip",
-      "detail": "this server reports the memories capability false or absent, and the Memories chapter is optional at every class"
+      "outcome": "pass",
+      "detail": "hmrec_155942824968174510184903362178928755087 written by {'kind': 'member', 'type': 'agent', 'id': 'conformance'}"
     },
     {
       "id": "ME-03",
       "title": "A question covers the memory and what is below it, names where each answer is, and never looks above",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/memories.md#61-search-finds-the-place-then-the-agent-walks",
-      "outcome": "skip",
-      "detail": "this server reports the memories capability false or absent, and the Memories chapter is optional at every class"
+      "outcome": "pass",
+      "detail": "found from hmem_22409111408238335813654676481995627339 in hmem_134311671350989299897807579909284182879; depth 0 and the upward direction hold"
     },
     {
       "id": "ME-04",
       "title": "What a provider does not do is said, never ignored",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/memories.md#63-the-response",
-      "outcome": "skip",
-      "detail": "this server reports the memories capability false or absent, and the Memories chapter is optional at every class"
+      "outcome": "pass",
+      "detail": "query=declared, text=declared, filters=degraded"
     },
     {
       "id": "ME-05",
       "title": "A revision appends a version and the earlier one stays in the history",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/memories.md#53-nothing-is-overwritten",
-      "outcome": "skip",
-      "detail": "this server reports the memories capability false or absent, and the Memories chapter is optional at every class"
+      "outcome": "pass",
+      "detail": "2 versions, the first superseded"
     },
     {
       "id": "ME-06",
       "title": "A record of one memory is not found through another",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/memories.md#33-enforcement",
-      "outcome": "skip",
-      "detail": "this server reports the memories capability false or absent, and the Memories chapter is optional at every class"
+      "outcome": "pass",
+      "detail": "refused by id through the parent, intact in its own memory"
     },
     {
       "id": "ME-07",
       "title": "Forget closes a record and keeps its trace; erase reports what could not be reached",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/memories.md#52-two-ways-to-remove",
-      "outcome": "skip",
-      "detail": "this server reports the memories capability false or absent, and the Memories chapter is optional at every class"
+      "outcome": "pass",
+      "detail": "forgotten, then erased with unreachable=0"
     },
     {
       "id": "ME-09",
       "title": "Content is an ordered list of text and file parts, and a provider keeps what it says it keeps",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/memories.md#43-content",
-      "outcome": "skip",
-      "detail": "this server reports the memories capability false or absent, and the Memories chapter is optional at every class"
+      "outcome": "pass",
+      "detail": "text parts in order; file parts not exercised (POST /v1/files answered HTTP 500)"
     },
     {
       "id": "ME-10",
@@ -843,7 +832,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/memories.md#66-the-graph",
       "outcome": "skip",
-      "detail": "this server reports the memories capability false or absent, and the Memories chapter is optional at every class"
+      "detail": "this provider keeps no record of type entity (graph.entities is none)"
     },
     {
       "id": "ME-11",
@@ -851,31 +840,31 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/memories.md#44-facts-that-change",
       "outcome": "skip",
-      "detail": "this server reports the memories capability false or absent, and the Memories chapter is optional at every class"
+      "detail": "this provider does not declare holds: it keeps the attributes as written"
     },
     {
       "id": "ME-12",
       "title": "A record found on one side of a disagreement brings the other",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/memories.md#63-the-response",
-      "outcome": "skip",
-      "detail": "this server reports the memories capability false or absent, and the Memories chapter is optional at every class"
+      "outcome": "pass",
+      "detail": "limit 1 answered both sides of Hollinb2528e's lease"
     },
     {
       "id": "ME-13",
       "title": "A memory's standing records are read newest first, within a budget, from that memory alone",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/memories.md#91-what-a-session-does",
-      "outcome": "skip",
-      "detail": "this server reports the memories capability false or absent, and the Memories chapter is optional at every class"
+      "outcome": "pass",
+      "detail": "2 standing records, newest first; a budget of one token kept the newest"
     },
     {
       "id": "ME-08",
       "title": "A memory moves with its subtree, and deleting it takes the subtree",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/memories.md#2-the-memory-object",
-      "outcome": "skip",
-      "detail": "this server reports the memories capability false or absent, and the Memories chapter is optional at every class"
+      "outcome": "pass",
+      "detail": "1 tree(s) removed"
     }
   ]
 }

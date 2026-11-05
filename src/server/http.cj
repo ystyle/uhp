@@ -215,6 +215,174 @@ public class UhpHttpServer {
                 return
             }
         }
+        // ---------- 记忆（Memories） ----------
+        if (path == "/v1/memories/providers" && method == "GET") {
+            this.writeJson(ctx, UInt16(200), memoryProvidersJson(this.engine.memoryProviderJsonText()),
+                version: Some(usedVersion))
+            return
+        }
+        if (path == "/v1/memories" && method == "GET") {
+            let granted = queryString(ctx, "granted") == Some("true")
+            let parent = queryString(ctx, "parent")
+            let items = if (granted) {
+                this.engine.grantedMemories()
+            } else {
+                match (parent) {
+                    case Some(pid) => this.engine.memoriesByParent(pid)
+                    case None => this.engine.grantedMemories()
+                }
+            }
+            let out = ByteBuffer()
+            let w = JsonWriter(out)
+            w.startObject()
+            w.writeName("data")
+            w.startArray()
+            for (m in items) {
+                w.jsonValue(memoryJson(m))
+            }
+            w.endArray()
+            w.endObject()
+            w.flush()
+            this.writeJson(ctx, UInt16(200), String.fromUtf8(out.bytes()), version: Some(usedVersion))
+            return
+        }
+        if (path == "/v1/memories" && method == "POST") {
+            let obj = parseJsonObject(readAllText(ctx.request.body))
+            let name = obj.str("name") ?? ""
+            let rec = this.engine.createMemory(principal, name, obj.str("description"),
+                obj.str("parent_id"), obj.str("provider"))
+            this.writeJson(ctx, UInt16(200), memoryJson(rec), version: Some(usedVersion))
+            return
+        }
+        if (seg.size >= 3 && seg[0] == "v1" && seg[1] == "memories") {
+            let mid = seg[2]
+            if (seg.size == 3 && method == "GET") {
+                this.writeJson(ctx, UInt16(200), memoryJson(this.engine.getMemory(mid)),
+                    version: Some(usedVersion))
+                return
+            }
+            if (seg.size == 3 && method == "PUT") {
+                let obj = parseJsonObject(readAllText(ctx.request.body))
+                let parentId = obj.str("parent_id") ?? ""
+                this.writeJson(ctx, UInt16(200), memoryJson(this.engine.moveMemory(mid, parentId)),
+                    version: Some(usedVersion))
+                return
+            }
+            if (seg.size == 3 && method == "DELETE") {
+                this.engine.deleteMemoryTree(mid)
+                this.writeJson(ctx, UInt16(200), memoryDeletedJson(mid), version: Some(usedVersion))
+                return
+            }
+            if (seg.size == 4 && seg[3] == "records" && method == "POST") {
+                let w = parseMemoryWrite(JsonReader(ByteBuffer(readAllText(ctx.request.body).toArray())))
+                let rec = this.engine.createMemoryRecord(principal, mid, w)
+                this.writeJson(ctx, UInt16(200), memoryRecordJson(rec), version: Some(usedVersion))
+                return
+            }
+            if (seg.size == 4 && seg[3] == "records" && method == "GET") {
+                let out = ByteBuffer()
+                let w = JsonWriter(out)
+                w.startObject()
+                w.writeName("data")
+                w.startArray()
+                for (r in this.engine.listMemoryRecords(mid)) {
+                    w.jsonValue(memoryRecordJson(r))
+                }
+                w.endArray()
+                w.endObject()
+                w.flush()
+                this.writeJson(ctx, UInt16(200), String.fromUtf8(out.bytes()), version: Some(usedVersion))
+                return
+            }
+            if (seg.size >= 5 && seg[3] == "records") {
+                let rid = seg[4]
+                if (seg.size == 5 && method == "GET") {
+                    this.writeJson(ctx, UInt16(200), memoryRecordJson(this.engine.getMemoryRecord(mid, rid)),
+                        version: Some(usedVersion))
+                    return
+                }
+                if (seg.size == 5 && method == "PATCH") {
+                    let w = parseMemoryWrite(JsonReader(ByteBuffer(readAllText(ctx.request.body).toArray())))
+                    this.writeJson(ctx, UInt16(200),
+                        memoryRecordJson(this.engine.patchMemoryRecord(principal, mid, rid, w)),
+                        version: Some(usedVersion))
+                    return
+                }
+                if (seg.size == 5 && method == "DELETE") {
+                    this.writeJson(ctx, UInt16(200),
+                        memoryRecordJson(this.engine.forgetMemoryRecord(mid, rid)),
+                        version: Some(usedVersion))
+                    return
+                }
+                if (seg.size == 6 && seg[5] == "history" && method == "GET") {
+                    this.writeJson(ctx, UInt16(200),
+                        memoryHistoryJson(this.engine.getMemoryRecord(mid, rid)), version: Some(usedVersion))
+                    return
+                }
+            }
+            if (seg.size == 4 && seg[3] == "erase" && method == "POST") {
+                let obj = parseJsonObject(readAllText(ctx.request.body))
+                let list = ArrayList<String>()
+                let rawIds = obj.raw("record_ids") ?? "[]"
+                try {
+                    let rr = JsonReader(ByteBuffer(rawIds.toArray()))
+                    rr.startArray()
+                    while (true) {
+                        match (rr.peek()) {
+                            case Some(JsonToken.EndArray) => break
+                            case Some(JsonToken.JsonString) =>
+                                list.add(rr.readValue<String>())
+                            case _ => rr.skip()
+                        }
+                    }
+                    rr.endArray()
+                } catch (ex: Exception) {
+                    ()
+                }
+                let (erased, unreachable) = this.engine.eraseMemoryRecords(mid, list.toArray())
+                this.writeJson(ctx, UInt16(200), erasureJson(erased, unreachable), version: Some(usedVersion))
+                return
+            }
+            if (seg.size == 4 && seg[3] == "recall" && method == "POST") {
+                let body = readAllText(ctx.request.body)
+                let obj = match (tryParseJsonObject(body)) {
+                    case Some(o) => o
+                    case None => parseJsonObject(body)
+                }
+                let query = obj.str("query")
+                let text = obj.str("text")
+                let useFilters = obj.raw("filters").isSome()
+                if (query.isNone() && text.isNone() && !useFilters) {
+                    throw EngineError("memory_invalid", UInt16(422), param: Some("query"))
+                }
+                let depth = match (obj.raw("depth")) {
+                    case Some(v) => match (Int64.tryParse(v)) {
+                        case Some(n) => n
+                        case None => 1
+                    }
+                    case None => 1
+                }
+                let limit = match (obj.raw("limit")) {
+                    case Some(v) => match (Int64.tryParse(v)) {
+                        case Some(n) => n
+                        case None => 10
+                    }
+                    case None => 10
+                }
+                let q = if (let Some(v) <- query) { v } else { text ?? "" }
+                this.writeJson(ctx, UInt16(200),
+                    this.engine.recallMemory(mid, q, query.isSome(), useFilters, depth, limit),
+                    version: Some(usedVersion))
+                return
+            }
+            if (seg.size == 4 && seg[3] == "prime" && method == "GET") {
+                let budget = queryInt(ctx, "budget", 4000)
+                this.writeJson(ctx, UInt16(200), this.engine.primeMemory(mid, budget),
+                    version: Some(usedVersion))
+                return
+            }
+        }
+
         // ---------- 环境（Environments） ----------
         if (path == "/v1/environments" && method == "GET") {
             let out = ByteBuffer()
@@ -757,6 +925,38 @@ func readHarnessId(r: JsonReader): Option<String> {
 // ---------- 杂项 ----------
 
 // 把 URL 分段重新接成子路径（环境文件路径可能多层）
+func memoryDeletedJson(id: String): String {
+    let out = ByteBuffer()
+    let w = JsonWriter(out)
+    w.startObject()
+    w.writeName("id").writeValue(id)
+    w.writeName("deleted").writeValue(true)
+    w.endObject()
+    w.flush()
+    return String.fromUtf8(out.bytes())
+}
+
+func erasureJson(erased: Array<String>, unreachable: Array<String>): String {
+    let out = ByteBuffer()
+    let w = JsonWriter(out)
+    w.startObject()
+    w.writeName("erased")
+    w.startArray()
+    for (e in erased) {
+        w.writeValue(e)
+    }
+    w.endArray()
+    w.writeName("unreachable")
+    w.startArray()
+    for (u in unreachable) {
+        w.writeValue(u)
+    }
+    w.endArray()
+    w.endObject()
+    w.flush()
+    return String.fromUtf8(out.bytes())
+}
+
 func joinSegments(seg: Array<String>, from: Int64): String {
     var out = ""
     var i = from

@@ -165,6 +165,11 @@ public class Engine {
     // 环境（Environments 章）：每个环境一个真实目录（mount），build 后只读
     private let envs: HashMap<String, EnvRecord> = HashMap<String, EnvRecord>()
     private let envBase: String = envBaseDir()
+    // 记忆（Memories 章）：树节点 / 记录 / 双向链接
+    private let memories: HashMap<String, MemoryNodeRec> = HashMap<String, MemoryNodeRec>()
+    private let memRecords: HashMap<String, MemoryRecordRec> = HashMap<String, MemoryRecordRec>()
+    private let memLinks: HashMap<String, ArrayList<(String, String)>> = HashMap<String, ArrayList<(String, String)>>()
+    private let memProvider: String = "uhp-local"
     private let versions: Array<String>
     private let cls: ConformanceClass
     private let capabilitiesValue: Capabilities
@@ -215,6 +220,7 @@ public class Engine {
                 caps.sessionSharing = true
                 caps.inputRequests = true
                 caps.environments = true
+                caps.memories = true
         }
         this.capabilitiesValue = caps
     }
@@ -712,6 +718,544 @@ public class Engine {
                     return true
                 case None => throw EngineError("response_not_found", UInt16(404))
             }
+        }
+    }
+
+    // ---------- 记忆（Memories） ----------
+
+    public func memoryProviderJsonText(): String {
+        return memoryProviderJson()
+    }
+
+    public func createMemory(p: Principal, name: String, description: Option<String>,
+                             parentId: Option<String>, provider: Option<String>): MemoryNodeRec {
+        synchronized(this.lock) {
+            let id = "hmem_" + this.idSource.session().replace("hsess", "")
+            var prov = this.memProvider
+            let provIn = match (provider) {
+                case Some(v) => v
+                case None => this.memProvider
+            }
+            prov = provIn
+            let rec = MemoryNodeRec(id, name, description, prov)
+            match (parentId) {
+                case Some(pid) =>
+                    let parent = this.memoryLocked(pid)
+                    rec.parentId = Some(pid)
+                    let anc = ArrayList<String>()
+                    for (a in parent.ancestors) {
+                        anc.add(a)
+                    }
+                    anc.add(parent.id)
+                    rec.ancestors = anc.toArray()
+                case None => ()
+            }
+            this.memories[id] = rec
+            return rec
+        }
+    }
+
+    private func memoryLocked(id: String): MemoryNodeRec {
+        return match (this.memories.get(id)) {
+            case Some(m) => m
+            case None => throw EngineError("memory_not_found", UInt16(404), param: Some("memory_id"))
+        }
+    }
+
+    public func getMemory(id: String): MemoryNodeRec {
+        synchronized(this.lock) {
+            return this.memoryLocked(id)
+        }
+    }
+
+    public func memoriesByParent(parentId: String): Array<MemoryNodeRec> {
+        synchronized(this.lock) {
+            let out = ArrayList<MemoryNodeRec>()
+            for ((_, m) in this.memories) {
+                match (m.parentId) {
+                    case Some(p) => if (p == parentId) {
+                        out.add(m)
+                    }
+                    case None => ()
+                }
+            }
+            return out.toArray()
+        }
+    }
+
+    // 被授予的：调用者「自己进入」的记忆（没有父节点的那种）
+    public func grantedMemories(): Array<MemoryNodeRec> {
+        synchronized(this.lock) {
+            let out = ArrayList<MemoryNodeRec>()
+            for ((_, m) in this.memories) {
+                if (m.parentId.isNone()) {
+                    out.add(m)
+                }
+            }
+            return out.toArray()
+        }
+    }
+
+    public func memoryDescendants(id: String): Array<String> {
+        synchronized(this.lock) {
+            let out = ArrayList<String>()
+            out.add(id)
+            for ((_, m) in this.memories) {
+                if (m.ancestors.contains(id)) {
+                    out.add(m.id)
+                }
+            }
+            return out.toArray()
+        }
+    }
+
+    public func deleteMemoryTree(id: String): Unit {
+        synchronized(this.lock) {
+            let _ = this.memoryLocked(id)
+            let ids = this.memoryDescendants(id)
+            for (mid in ids) {
+                this.memories.remove(mid)
+                let recs = ArrayList<String>()
+                for ((rid, r) in this.memRecords) {
+                    if (r.memoryId == mid) {
+                        recs.add(rid)
+                    }
+                }
+                for (rid in recs) {
+                    this.memRecords.remove(rid)
+                    this.memLinks.remove(rid)
+                }
+            }
+        }
+    }
+
+    // 移动子树；移到自己的后代下会成环 -> 422
+    public func moveMemory(id: String, newParentId: String): MemoryNodeRec {
+        synchronized(this.lock) {
+            let rec = this.memoryLocked(id)
+            let _ = this.memoryLocked(newParentId)
+            if (newParentId == id || this.memoryDescendants(id).contains(newParentId)) {
+                throw EngineError("memory_invalid", UInt16(422), param: Some("parent_id"))
+            }
+            let parent = this.memoryLocked(newParentId)
+            rec.parentId = Some(newParentId)
+            let anc = ArrayList<String>()
+            for (a in parent.ancestors) {
+                anc.add(a)
+            }
+            anc.add(parent.id)
+            rec.ancestors = anc.toArray()
+            rec.updatedAt = nowSeconds()
+            return rec
+        }
+    }
+
+    public func createMemoryRecord(p: Principal, mid: String, w: MemoryWrite): MemoryRecordRec {
+        synchronized(this.lock) {
+            let memory = this.memoryLocked(mid)
+            if (w.typeName.size == 0) {
+                throw EngineError("memory_invalid", UInt16(422), param: Some("type"))
+            }
+            let contentJson = normalizeContent(w, FileStoreView(this.files))
+            let attributesJson = w.attributesJson ?? "{}"
+            let referencesJson = w.referencesJson ?? "[]"
+            let timeJson = w.timeJson ?? "{}"
+            let writtenBy = memoryWriterJson(p.name)
+            let refs = refsOf(referencesJson)
+            var searchText = contentSearchText(contentJson)
+            match (w.title) {
+                case Some(t) => searchText = t + " " + searchText
+                case None => ()
+            }
+            let v = MemoryVersion(1, w.title, contentJson, attributesJson, referencesJson, timeJson,
+                writtenBy, searchText, standingOf(attributesJson), refs, None)
+            let id = "hmrec_" + this.idSource.session().replace("hsess", "")
+            let rec = MemoryRecordRec(id, mid, w.typeName)
+            rec.versions.add(v)
+            this.memRecords[id] = rec
+            // 引用是双向的：contradicts 在两边都留痕（ME-12）
+            for ((rel, rid) in refs) {
+                this.linkLocked(rec.id, rel, rid)
+                if (rel == "contradicts") {
+                    this.linkLocked(rid, rel, rec.id)
+                    // 引用在两边都留痕：反向引用写进对方的版本（ME-12 从 GET 记录读得到）
+                    match (this.memRecords.get(rid)) {
+                        case Some(other) =>
+                            let ov = other.latest()
+                            ov.referencesJson = withReference(ov.referencesJson, rel, rec.id)
+                            let all = ArrayList<(String, String)>()
+                            for (r0 in ov.references) {
+                                all.add(r0)
+                            }
+                            all.add((rel, rec.id))
+                            ov.references = all.toArray()
+                        case None => ()
+                    }
+                }
+            }
+            memory.updatedAt = nowSeconds()
+            return rec
+        }
+    }
+
+    private func linkLocked(from: String, rel: String, to: String): Unit {
+        let list = match (this.memLinks.get(from)) {
+            case Some(l) => l
+            case None =>
+                let l = ArrayList<(String, String)>()
+                this.memLinks[from] = l
+                l
+        }
+        var seen = false
+        for ((r0, t0) in list) {
+            if (r0 == rel && t0 == to) {
+                seen = true
+                break
+            }
+        }
+        if (!seen) {
+            list.add((rel, to))
+        }
+    }
+
+    private func recordLocked(mid: String, rid: String): MemoryRecordRec {
+        let rec = match (this.memRecords.get(rid)) {
+            case Some(r) => r
+            case None => throw EngineError("not_found", UInt16(404))
+        }
+        if (rec.memoryId != mid) {
+            // 一个记忆的记录不能从另一个记忆里查到（ME-06）
+            throw EngineError("not_found", UInt16(404))
+        }
+        return rec
+    }
+
+    public func getMemoryRecord(mid: String, rid: String): MemoryRecordRec {
+        synchronized(this.lock) {
+            return this.recordLocked(mid, rid)
+        }
+    }
+
+    public func listMemoryRecords(mid: String): Array<MemoryRecordRec> {
+        synchronized(this.lock) {
+            let _ = this.memoryLocked(mid)
+            let out = ArrayList<MemoryRecordRec>()
+            for ((_, r) in this.memRecords) {
+                if (r.memoryId == mid && r.status == "active") {
+                    out.add(r)
+                }
+            }
+            // 新的在前（手写选择排序：ArrayList 没有 sort）
+            let arr = out.toArray()
+            var i = 0
+            while (i < arr.size) {
+                var best = i
+                var j = i + 1
+                while (j < arr.size) {
+                    if (arr[j].updatedAt > arr[best].updatedAt) {
+                        best = j
+                    }
+                    j = j + 1
+                }
+                if (best != i) {
+                    let tmp = arr[i]
+                    arr[i] = arr[best]
+                    arr[best] = tmp
+                }
+                i = i + 1
+            }
+            return arr
+        }
+    }
+
+    // 修订：追加版本，旧版本留在 history
+    public func patchMemoryRecord(p: Principal, mid: String, rid: String, w: MemoryWrite): MemoryRecordRec {
+        synchronized(this.lock) {
+            let rec = this.recordLocked(mid, rid)
+            let prev = rec.latest()
+            let contentJson = match (w.contentJson) {
+                case Some(_) => normalizeContent(w, FileStoreView(this.files))
+                case None => prev.contentJson
+            }
+            let titleJson = match (w.title) {
+                case Some(t) => Some(t)
+                case None => prev.titleJson
+            }
+            let attributesJson = w.attributesJson ?? prev.attributesJson
+            let referencesJson = w.referencesJson ?? prev.referencesJson
+            let timeJson = w.timeJson ?? prev.timeJson
+            let refs = refsOf(referencesJson)
+            var searchText = contentSearchText(contentJson)
+            match (titleJson) {
+                case Some(t) => searchText = t + " " + searchText
+                case None => ()
+            }
+            let writtenBy = memoryWriterJson(p.name)
+            let v = MemoryVersion(prev.version + 1, titleJson, contentJson, attributesJson,
+                referencesJson, timeJson, writtenBy, searchText, standingOf(attributesJson), refs, None)
+            rec.versions.add(v)
+            rec.updatedAt = nowSeconds()
+            return rec
+        }
+    }
+
+    public func forgetMemoryRecord(mid: String, rid: String): MemoryRecordRec {
+        synchronized(this.lock) {
+            let rec = this.recordLocked(mid, rid)
+            rec.status = "forgotten"
+            rec.updatedAt = nowSeconds()
+            return rec
+        }
+    }
+
+    public func eraseMemoryRecords(mid: String, ids: Array<String>): (Array<String>, Array<String>) {
+        synchronized(this.lock) {
+            let _ = this.memoryLocked(mid)
+            let erased = ArrayList<String>()
+            let unreachable = ArrayList<String>()
+            for (rid in ids) {
+                match (this.memRecords.get(rid)) {
+                    case Some(r) => if (r.memoryId == mid) {
+                        this.memRecords.remove(rid)
+                        this.memLinks.remove(rid)
+                        erased.add(rid)
+                    } else {
+                        unreachable.add(rid)
+                    }
+                    case None => unreachable.add(rid)
+                }
+            }
+            return (erased.toArray(), unreachable.toArray())
+        }
+    }
+
+    public func memoryLinksOf(rid: String): Array<(String, String)> {
+        synchronized(this.lock) {
+            return match (this.memLinks.get(rid)) {
+                case Some(l) => l.toArray()
+                case None => Array<(String, String)>()
+            }
+        }
+    }
+
+    // ---------- 召回 / prime ----------
+
+    public func recallMemory(mid: String, queryText: String, useQuery: Bool, useFilters: Bool,
+                             depth: Int64, limit: Int64): String {
+        synchronized(this.lock) {
+            let memory = this.memoryLocked(mid)
+            let scope = if (depth == 0) {
+                [mid]
+            } else {
+                this.memoryDescendants(mid)
+            }
+            let hits = ArrayList<(String, Int64, Int64)>()   // recordId, score, updatedAt
+            for ((rid, r) in this.memRecords) {
+                if (r.status != "active") {
+                    continue
+                }
+                if (!scope.contains(r.memoryId)) {
+                    continue
+                }
+                let v = r.latest()
+                let matched = matchCount(v.searchText, queryText)
+                if (matched > 0) {
+                    hits.add((rid, matched, r.updatedAt))
+                }
+            }
+            // 手写选择排序：score 高的在前，其次新的在前
+            let harr = hits.toArray()
+            var hi = 0
+            while (hi < harr.size) {
+                var best = hi
+                var hj = hi + 1
+                while (hj < harr.size) {
+                    var better = harr[hj][1] > harr[best][1]
+                    if (harr[hj][1] == harr[best][1]) {
+                        better = harr[hj][2] > harr[best][2]
+                    }
+                    if (better) {
+                        best = hj
+                    }
+                    hj = hj + 1
+                }
+                if (best != hi) {
+                    let tmp = harr[hi]
+                    harr[hi] = harr[best]
+                    harr[best] = tmp
+                }
+                hi = hi + 1
+            }
+            let results = ArrayList<String>()
+            let chosen = ArrayList<String>()
+            var taken: Int64 = 0
+            for ((rid, score, _) in harr) {
+                if (taken >= limit) {
+                    break
+                }
+                chosen.add(rid)
+                taken = taken + 1
+                results.add(recallEntryJson(rid, this.memRecords[rid], Some(score), Array<String>()))
+            }
+            // 分歧的另一边随命中一起带到（why=["contradicts"]，无 score）
+            for (rid in chosen.toArray()) {
+                for ((rel, other) in this.memoryLinksOf(rid)) {
+                    if (rel != "contradicts" || chosen.contains(other)) {
+                        continue
+                    }
+                    match (this.memRecords.get(other)) {
+                        case Some(or) => if (or.status == "active" && scope.contains(or.memoryId)) {
+                            chosen.add(other)
+                            results.add(recallEntryJson(other, or, None, ["contradicts"]))
+                        }
+                        case None => ()
+                    }
+                }
+            }
+            return recallJson(memory, results.toArray(), scope, useFilters)
+        }
+    }
+
+    private func matchCount(text: String, queryText: String): Int64 {
+        if (queryText.size == 0) {
+            return 0
+        }
+        var n: Int64 = 0
+        for (term in queryText.split(" ")) {
+            let t = term.trimAscii()
+            if (t.size >= 3 && text.toAsciiLower().contains(t.toAsciiLower())) {
+                n = n + 1
+            }
+        }
+        return n
+    }
+
+    private func recallEntryJson(rid: String, rec: MemoryRecordRec, score: Option<Int64>,
+                                 why: Array<String>): String {
+        let out = ByteBuffer()
+        let w = JsonWriter(out)
+        w.startObject()
+        w.writeName("record").jsonValue(memoryRecordJson(rec))
+        w.writeName("memory")
+        w.startObject()
+        w.writeName("id").writeValue(rec.memoryId)
+        w.endObject()
+        match (score) {
+            case Some(s) => w.writeName("score").writeValue(s)
+            case None => w.writeName("score").writeNullValue()
+        }
+        if (why.size > 0) {
+            w.writeName("why")
+            w.startArray()
+            for (x in why) {
+                w.writeValue(x)
+            }
+            w.endArray()
+        }
+        w.endObject()
+        w.flush()
+        return String.fromUtf8(out.bytes())
+    }
+
+    private func recallJson(memory: MemoryNodeRec, results: Array<String>, scope: Array<String>,
+                            useFilters: Bool): String {
+        let out = ByteBuffer()
+        let w = JsonWriter(out)
+        w.startObject()
+        w.writeName("object").writeValue("memory.recall")
+        match (memory.parentId) {
+            case Some(pid) =>
+                w.writeName("parent")
+                w.startObject()
+                w.writeName("id").writeValue(pid)
+                w.endObject()
+            case None => ()
+        }
+        w.writeName("children")
+        w.startArray()
+        for ((_, m) in this.memories) {
+            match (m.parentId) {
+                case Some(pid) => if (pid == memory.id && scope.contains(m.id)) {
+                    w.startObject()
+                    w.writeName("id").writeValue(m.id)
+                    match (m.description) {
+                        case Some(d) => w.writeName("description").writeValue(d)
+                        case None => ()
+                    }
+                    w.endObject()
+                }
+                case None => ()
+            }
+        }
+        w.endArray()
+        w.writeName("results")
+        w.startArray()
+        for (r in results) {
+            w.jsonValue(r)
+        }
+        w.endArray()
+        w.writeName("degraded")
+        w.startArray()
+        if (useFilters) {
+            w.writeValue("filters:not_supported")
+        }
+        w.endArray()
+        w.writeName("abstain").writeValue(results.size == 0)
+        w.endObject()
+        w.flush()
+        return String.fromUtf8(out.bytes())
+    }
+
+    public func primeMemory(mid: String, budget: Int64): String {
+        synchronized(this.lock) {
+            let _ = this.memoryLocked(mid)
+            let standing = ArrayList<MemoryRecordRec>()
+            for ((_, r) in this.memRecords) {
+                if (r.memoryId == mid && r.status == "active" && r.latest().standing) {
+                    standing.add(r)
+                }
+            }
+            let sarr = standing.toArray()
+            var si = 0
+            while (si < sarr.size) {
+                var best = si
+                var sj = si + 1
+                while (sj < sarr.size) {
+                    if (sarr[sj].updatedAt > sarr[best].updatedAt) {
+                        best = sj
+                    }
+                    sj = sj + 1
+                }
+                if (best != si) {
+                    let tmp = sarr[si]
+                    sarr[si] = sarr[best]
+                    sarr[best] = tmp
+                }
+                si = si + 1
+            }
+            let out = ByteBuffer()
+            let w = JsonWriter(out)
+            w.startObject()
+            w.writeName("object").writeValue("memory.prime")
+            w.writeName("records")
+            w.startArray()
+            var tokens: Int64 = 0
+            var included: Int64 = 0
+            for (r in sarr) {
+                // 一条 standing 记录按 1 个 token 计；预算为 1 时仍保留最新一条
+                if (tokens >= budget && included > 0) {
+                    break
+                }
+                w.jsonValue(memoryRecordJson(r))
+                tokens = tokens + 1
+                included = included + 1
+            }
+            w.endArray()
+            w.writeName("tokens").writeValue(tokens)
+            w.writeName("truncated").writeValue(included < Int64(sarr.size))
+            w.endObject()
+            w.flush()
+            return String.fromUtf8(out.bytes())
         }
     }
 
