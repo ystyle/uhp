@@ -42,6 +42,14 @@ bash uhp-acp/scripts/real-smoke.sh        # UHP 任务 -> opencode acp -> 输出
 - 一致性报告：[uhp/docs/conformance/](uhp/docs/conformance/)
 - 各适配器的映射表与「已知限制（如实）」：成员目录下的 README
 
+## 发布
+
+只有 SDK 成员返回中心仓（" + Q + "uhp" + Q + "）；两个适配器是参考实现，不发布。
+
+## 发布
+
+只有 SDK 成员发中心仓（uhp）；两个适配器是参考实现，不发布。
+
 ## 仓库约定
 
 - 根 `AGENTS.md`：monorepo 布局与命令；

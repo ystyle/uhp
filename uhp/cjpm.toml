@@ -19,7 +19,7 @@
   version = "0.1.0"
   license = ["MulanPSL-2.0"]
   authors = ["ystyle"]
-  repository = "https://atomgit.com/ystyle/uhp-cj"
+  repository = "https://atomgit.com/ystyle/uhp"
   # 制品清单：只带源码与许可。include 一律锚定（未锚定会连带 example/src、tests/src）。
   include = ["/src", "/LICENSE"]
   exclude = ["/docs", "/tools", "/resources", "/scripts", "/examples", "/target"]

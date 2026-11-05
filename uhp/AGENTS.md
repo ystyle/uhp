@@ -99,6 +99,7 @@ codec  <-  base  <-  generated  <-  handwritten
 ## 8. 发版
 
 - 发布范围由 monorepo 的 `workspace.toml` 决定：**只有本成员（uhp）发中心仓**，两个适配器成员在 exclude 里。
+  实际执行：根目录 `bash uhp/scripts/bundle-and-publish.sh`（或 `./scripts/workspace-release.sh publish uhp --exclude uhp_acp,uhp_opencode` 预演到私有仓；中心仓手工 `cd uhp && cjpm bundle --skip-lint && cjpm publish`）。
 - 遵循工作区 [docs/publish-scope.md](../../docs/publish-scope.md)：**新包默认不发中心仓**，要发必须显式决策并更新该文件。
 - 发版前闸门：`bash scripts/test.sh` 绿 + `python3 tools/gen_types.py --check` 绿 +
   `python3 tools/check_schema_sync.py` 绿 + `LICENSE` 文件补齐 + 制品解包核对。
