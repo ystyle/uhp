@@ -71,9 +71,19 @@ public class UhpHttpServer {
         let method = ctx.request.method
         let path = ctx.request.url.path
 
+        // 版本协商先于一切（含 discovery）：不认识的版本必须明确失败并列出支持版本，
+        // 绝不静默换版本。discovery 请求同样如此（套件 V-03 就是打 /v1/uhp 且不带鉴权）。
+        let usedVersion = match (this.negotiate(ctx)) {
+            case Some(v) => v
+            case None =>
+                this.writeErrorDetail(ctx, UInt16(400), "unsupported_protocol_version", None,
+                    "{\"supported\":[" + quoteJoin(this.versions) + "]}")
+                return
+        }
+
         // discovery 免鉴权：客户端要先知道对面是不是 UHP 服务端，才谈得上给凭证
         if (method == "GET" && path == "/v1/uhp") {
-            this.writeJson(ctx, UInt16(200), jsonOf(this.engine.discovery()))
+            this.writeJson(ctx, UInt16(200), jsonOf(this.engine.discovery()), version: Some(usedVersion))
             return
         }
 
@@ -86,15 +96,6 @@ public class UhpHttpServer {
                     "invalid_credential"
                 }
                 this.writeError(ctx, UInt16(401), code, None)
-                return
-        }
-
-        // 版本协商：不认识的版本必须明确失败并列出支持的版本，绝不静默换版本
-        let usedVersion = match (this.negotiate(ctx)) {
-            case Some(v) => v
-            case None =>
-                this.writeErrorDetail(ctx, UInt16(400), "unsupported_protocol_version", None,
-                    "{\"supported\":[" + quoteJoin(this.versions) + "]}")
                 return
         }
 
@@ -162,11 +163,19 @@ public class UhpHttpServer {
     private func handleCreateResponse(ctx: HttpContext, principal: Principal, usedVersion: String): Unit {
         let body = readAllText(ctx.request.body)
         let parsed = parseTaskRequest(body)
-        let req = TaskRequest(parsed.input, model: parsed.model, harnessId: parsed.harnessId, previousResponseId: parsed.previousResponseId)
-        let result = this.engine.createTask(principal, req)
+        let req = TaskRequest(parsed.input, model: parsed.model, harnessId: parsed.harnessId,
+            previousResponseId: parsed.previousResponseId, background: parsed.background,
+            ignoredFields: parsed.ignored.toArray())
         if (parsed.stream) {
-            this.writeSse(ctx, result, usedVersion)
+            // 流式：立刻建流，事件边产生边发（不能等任务跑完再一把刷，套件 S-09 会抓）
+            let started = this.engine.startTask(principal, req)
+            this.writeSse(ctx, started, usedVersion)
+        } else if (parsed.background) {
+            // background：接受即返回 in_progress；轮询 GET 看终态（套件 T-11）
+            let started = this.engine.startTask(principal, req)
+            this.writeJson(ctx, UInt16(200), jsonOf(started.response), version: Some(usedVersion))
         } else {
+            let result = this.engine.createTask(principal, req)
             this.writeJson(ctx, UInt16(200), jsonOf(result.response), version: Some(usedVersion))
         }
     }
@@ -180,10 +189,17 @@ public class UhpHttpServer {
             .header("x-accel-buffering", "no")
             .header("UHP-Version", usedVersion)
         let writer = HttpResponseWriter(ctx)
-        // 注意：引擎当前是同步执行，事件在写之前已经全部产生，所以这里是「按序回放」。
-        // 真正边跑边发需要引擎异步执行 + 通道订阅（已列在 M2 剩余项里）。
-        for (ev in result.channel.replay(0)) {
-            writer.write(("data: " + ev.json + "\n\n").toArray())
+        // 边产生边发：按游标增量读通道，直到通道关闭且游标追平。
+        var cursor: Int64 = 0
+        while (true) {
+            for (ev in result.channel.replay(cursor)) {
+                writer.write(("data: " + ev.json + "\n\n").toArray())
+                cursor = ev.seq + 1
+            }
+            if (result.channel.isClosed() && cursor > result.channel.lastSeq()) {
+                break
+            }
+            sleep(Duration.millisecond * 5)
         }
     }
 
@@ -223,7 +239,13 @@ public class UhpHttpServer {
 
     private func writeErrorDetail(ctx: HttpContext, status: UInt16, code: String, param: Option<String>,
                                   detailJson: String): Unit {
-        let t = if (status >= 500) { ErrorType.ServerError } else { ErrorType.InvalidRequestError }
+        // 错误 type 是封闭集合（Errors §2）：401 必须是 authentication_error，403 是 permission_error，
+        // 其余请求错误（400/404/409/410/413/422）是 invalid_request_error。
+        let t = match (status) {
+            case 401 => ErrorType.AuthenticationError
+            case 403 => ErrorType.PermissionError
+            case s => if (s >= 500) { ErrorType.ServerError } else { ErrorType.InvalidRequestError }
+        }
         let env = ErrorEnvelope(t, code, messageFor(code))
         env.param = param
         if (detailJson.size > 0) {
@@ -278,6 +300,9 @@ public class ParsedTaskRequest {
     public var harnessId: Option<String> = None
     public var previousResponseId: Option<String> = None
     public var stream: Bool = false
+    public var background: Bool = false
+    // 客户端发了但服务端不执行的字段（规范 §1.4 的两个保留字段）
+    public var ignored: ArrayList<String> = ArrayList<String>()
 }
 
 func parseTaskRequest(body: String): ParsedTaskRequest {
@@ -298,6 +323,14 @@ func parseTaskRequest(body: String): ParsedTaskRequest {
             case "input" => out.input = readInput(r)
             case "model" => out.model = Some(r.readValue<String>())
             case "stream" => out.stream = r.readValue<Bool>()
+            case "background" => out.background = r.readValue<Bool>()
+            // 保留字段：接受、不执行，但必须点名（否则「静默忽略」不可观测）
+            case "tools" =>
+                r.skip()
+                out.ignored.add("tools")
+            case "include" =>
+                r.skip()
+                out.ignored.add("include")
             case "previous_response_id" => out.previousResponseId = Some(r.readValue<String>())
             case "metadata" => out.harnessId = readHarnessId(r)
             case _ => r.skip()

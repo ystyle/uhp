@@ -104,10 +104,16 @@ public class ScriptedHarness <: HarnessDriver {
     // 每步之间检查取消标志，模拟协作式取消
     private let cancelledAfter: Int64
 
-    public init(steps: Array<ScriptStep>, finalOutcome: TurnOutcome, cancelledAfter!: Int64 = -1) {
+    // delayMillis：每步之间停一下。既让流式可观察（套件 S-09 检查「渐进而非末尾一把刷」），
+    // 也给 background 任务留出被轮询到 in_progress 的窗口。
+    private let delayMillis: Int64
+
+    public init(steps: Array<ScriptStep>, finalOutcome: TurnOutcome, cancelledAfter!: Int64 = -1,
+                delayMillis!: Int64 = 0) {
         this.steps = steps
         this.finalOutcome = finalOutcome
         this.cancelledAfter = cancelledAfter
+        this.delayMillis = delayMillis
     }
 
     public func base(): String {
@@ -143,6 +149,9 @@ public class ScriptedHarness <: HarnessDriver {
                 case Reasoning(t) => sink.reasoningDelta(t)
                 case ToolArgs(t) => sink.toolCallArgsDelta(t)
                 case Degrade(t) => sink.degrade(t)
+            }
+            if (this.delayMillis > 0) {
+                sleep(Duration.millisecond * this.delayMillis)
             }
             i = i + 1
         }

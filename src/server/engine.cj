@@ -81,13 +81,21 @@ public class TaskRequest {
     public let model: Option<String>
     public let harnessId: Option<String>
     public let previousResponseId: Option<String>
+    // background: 立即返回 in_progress，任务在后台跑（Lifecycle §3 的唯一非终态）
+    public let background: Bool
+    // 客户端发了、但服务端不执行的字段（UHP 的 tools/include 是保留字段）：
+    // 规范要求「忽略必须可观测」，必须出现在 metadata.ignored_fields 里。
+    public let ignoredFields: Array<String>
 
     public init(input: String, model!: Option<String> = None, harnessId!: Option<String> = None,
-                previousResponseId!: Option<String> = None) {
+                previousResponseId!: Option<String> = None, background!: Bool = false,
+                ignoredFields!: Array<String> = []) {
         this.input = input
         this.model = model
         this.harnessId = harnessId
         this.previousResponseId = previousResponseId
+        this.background = background
+        this.ignoredFields = ignoredFields
     }
 }
 
@@ -205,7 +213,19 @@ public class Engine {
 
     // ---------- 任务 ----------
 
+    // 同步语义：启动任务并等到终态（测试、非 background 的非流式请求走这里）。
     public func createTask(p: Principal, req: TaskRequest): TaskResult {
+        let result = this.startTask(p, req)
+        // 等任务落终态（通道关闭即表示终态事件已发出）
+        while (!result.channel.isClosed()) {
+            sleep(Duration.millisecond * 2)
+        }
+        return result
+    }
+
+    // 异步启动：立刻返回 in_progress 的 response 与事件通道；driver 在后台协程里跑。
+    // background 请求与流式请求都走这里——否则 background 永远返回 completed（套件 T-11）。
+    public func startTask(p: Principal, req: TaskRequest): TaskResult {
         synchronized(this.lock) {
             return this.createTaskLocked(p, req)
         }
@@ -265,6 +285,10 @@ public class Engine {
         resp.store = Some(true)
         let meta = ResponseMetadata()
         meta.session_id = Some(sessionId)
+        if (req.ignoredFields.size > 0) {
+            // 规范：服务端忽略请求字段时必须点名（tools/include 是保留字段）
+            meta.ignored_fields = Some(req.ignoredFields)
+        }
         resp.metadata = Some(meta)
         match (previous) {
             case Some(prev) => resp.previous_response_id = Some("\"" + prev.id + "\"")
@@ -273,30 +297,42 @@ public class Engine {
 
         // 事件 0：response.created（规范：created 必须是流的第一个事件）
         channel.emit("response.created", eventWithResponse("response.created", 0, resp))
+        this.stored[responseId] = StoredResponse(p.name, resp, channel)
 
+        // driver 在后台跑：background / 流式请求要能立刻拿到 in_progress 与事件通道。
+        // 校验（harness/session/scope）已经在锁内完成，所以 4xx 能赶在响应头之前返回。
         let sink = EngineSink(channel, this.idSource)
+        spawn {
+            this.executeTask(harness, req, sessionId, resp, channel, sink)
+        }
+        return TaskResult(resp, channel)
+    }
+
+    private func executeTask(harness: ConfiguredHarness, req: TaskRequest, sessionId: String,
+                             resp: Response, channel: EventChannel, sink: EngineSink): Unit {
         let outcome = try {
-            harness.driver.run(TurnContext(sessionId, req.input, model), sink, CancelToken())
+            harness.driver.run(TurnContext(sessionId, req.input, resp.model), sink, CancelToken())
         } catch (e: Exception) {
             // driver 抛异常 = failed(harness_error)，绝不允许吞成 completed
             TurnOutcome.Failed("harness_error", "harness failed")
         }
-
-        let finalStatus = this.applyOutcome(resp, outcome, sink)
-        let terminalType = match (finalStatus) {
-            case TaskStatus.Completed => "response.completed"
-            case TaskStatus.Incomplete => "response.incomplete"
-            case TaskStatus.Failed => "response.failed"
-            case TaskStatus.Cancelled => "response.failed"   // 规范：取消也用 failed 事件，status 才是权威
-            case _ => "response.completed"
+        synchronized(this.lock) {
+            let finalStatus = this.applyOutcome(resp, outcome, sink)
+            let terminalType = match (finalStatus) {
+                case TaskStatus.Completed => "response.completed"
+                case TaskStatus.Incomplete => "response.incomplete"
+                case TaskStatus.Failed => "response.failed"
+                case TaskStatus.Cancelled => "response.failed"   // 取消也用 failed 事件；status 才是权威
+                case _ => "response.completed"
+            }
+            let seq = channel.lastSeq() + 1
+            channel.emit(terminalType, eventWithResponse(terminalType, seq, resp))
+            channel.close()
+            match (this.sessions.get(sessionId)) {
+                case Some(s) => s.finish()
+                case None => ()
+            }
         }
-        let seq = channel.lastSeq() + 1
-        channel.emit(terminalType, eventWithResponse(terminalType, seq, resp))
-        channel.close()
-
-        this.stored[responseId] = StoredResponse(p.name, resp, channel)
-        session.finish()
-        return TaskResult(resp, channel)
     }
 
     private func applyOutcome(resp: Response, outcome: TurnOutcome, sink: EngineSink): TaskStatus {

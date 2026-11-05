@@ -16,19 +16,23 @@ UHP 定义「产品如何通过 HTTP 驱动一个完整的 agent harness」：�
 
 ## 当前状态
 
-**M0（骨架 + 类型层）进行中。** 明确区分「已经能用」与「还没写」：
+**M0/M1/M2 已完成；官方一致性套件 core 类全过。** 明确区分「已经能用」与「还没写」：
 
 | 部分 | 状态 | 说明 |
 |---|---|---|
 | cjpm 工程（单模块包 `uhp`） | ✅ | `cjpm build` 可过；制品 `include`/`exclude` 已锚定 |
 | 上游制品 vendor + manifest + 校验脚本 | ✅ | `resources/schema/` + `tools/check_schema_sync.py` |
-| 类型层 `src/types/` | 🚧 进行中 | `generated/` 由 `tools/gen_types.py` 生成；手写层（事件联合 / 错误码 / 不变量）尚未收口 |
+| 类型层 `src/types/` | ✅ | `generated/` 92 个定义生成；手写层：事件联合(18+Unknown)、错误模型(49 码)、信封 |
 | 未知字段保真 codec（`Extras`） | ✅ | GET→PUT 不丢未知键，有单测锚点 |
-| 能力发现（`Capabilities` 16 键 + 一致性类自洽） | ✅ | 缺省=false、服务端全写 16 键 |
-| 传输层 / 客户端 / 服务端 | ❌ 未开始 | `src/transport`、`src/client`、`src/server` 尚为规划目录 |
-| 官方一致性套件接入 | ❌ 未接入 | 未接入前**不声称 conformant** |
+| 传输层（SSE 解析 + stdx.net.http 适配） | ✅ | 字节级增量解析；每流独占 Client |
+| 客户端（发现/协商/错误映射/幂等/流消费） | ✅ | 无网络可测（传输抽象 + 桩） |
+| 服务端（引擎 + HTTP 层 + HarnessDriver） | ✅ | 路由/鉴权/版本/状态机/事件通道/能力门控/SSE |
+| **官方一致性套件 core** | ✅ **41/41** | 报告：`docs/conformance/2026.10.19.post5-core.json`（suite 2026.10.19.post5） |
+| extended / full 类 | ❌ 未开始 | 文件端点、会话列表/分享、harness 管理 |
+| environments / plugins / memories | ❌ 未开始 | 三个章级可选能力 |
 
-> 目前能做的只有：编译、跑类型层单测。**不可用于任何真实链路。**
+> 现在能用：`UhpClient` 对接任意 UHP 服务端；`UhpHttpServer` + `HarnessDriver` 起一个通过 core 类一致性检查的 UHP 服务端。
+> 还没有：文件上传/下载（extended）、harness 管理（full）、三个可选能力。
 
 ## 目录
 
