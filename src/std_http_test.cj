@@ -5,6 +5,7 @@
 package uhp
 
 import std.collection.HashMap
+import std.fs.*
 import std.sync.{AtomicBool, AtomicInt64}
 import stdx.net.http.*
 import std.unittest.*

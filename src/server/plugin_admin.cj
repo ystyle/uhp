@@ -105,6 +105,32 @@ public func directSkillNames(rec: HarnessRecord): Array<String> {
     return out.toArray()
 }
 
+// 本轮可用的 MCP 服务器并集：直接配置里启用的 + 启用插件派生的。
+// driver 通过 TurnContext 拿到它——UHP 不执行 MCP，但必须把「有哪些服务器」算对给出去。
+public func composedMcpServers(rec: HarnessRecord): Array<String> {
+    let out = ArrayList<String>()
+    for ((_, raw) in jsonStrings(rec.mcpServersJson ?? "[]", "name")) {
+        match (tryParseJsonObject(raw)) {
+            case Some(o) =>
+                let enabled = o.raw("enabled").map({ v => v == "true" }) ?? true
+                if (enabled) {
+                    out.add(raw)
+                }
+            case None => ()
+        }
+    }
+    for (p in rec.plugins) {
+        if (!p.enabled) {
+            continue
+        }
+        let d = derivePlugin(p.files, p.enabled)
+        for ((_, raw) in jsonStrings(d.mcpServersJson, "name")) {
+            out.add(raw)
+        }
+    }
+    return out.toArray()
+}
+
 // 组合校验（Plugins §4.2）：agent 看到的是一个扁平命名空间，冲突必须在配置期拒绝。
 // 只按「启用集合」判定：禁用的插件不参与。
 public func checkComposition(directServers: Array<String>, directSkills: Array<String>,

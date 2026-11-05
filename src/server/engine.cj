@@ -366,7 +366,12 @@ public class Engine {
     private func executeTask(harness: ConfiguredHarness, req: TaskRequest, sessionId: String,
                              resp: Response, channel: EventChannel, sink: EngineSink): Unit {
         let outcome = try {
-            harness.driver.run(TurnContext(sessionId, req.input, resp.model), sink, CancelToken())
+            let mcpServers = match (this.harnessRecords.get(harness.id)) {
+                case Some(rec) => composedMcpServers(rec)
+                case None => Array<String>()
+            }
+            harness.driver.run(TurnContext(sessionId, req.input, resp.model, mcpServers: mcpServers),
+                sink, CancelToken())
         } catch (e: Exception) {
             // driver 抛异常 = failed(harness_error)，绝不允许吞成 completed
             TurnOutcome.Failed("harness_error", "harness failed")

@@ -12,6 +12,8 @@ import std.collection.HashMap
 import std.convert.*
 import std.env.*
 import stdx.net.http.*
+import std.io.*
+import stdx.encoding.json.stream.*
 import uhp.server.*
 import uhp.types.base.*
 import uhp.types.generated.*
@@ -37,6 +39,14 @@ class SutHarness <: HarnessDriver {
     }
 
     public func run(ctx: TurnContext, sink: TurnSink, cancel: CancelToken): TurnOutcome {
+        // 插件场景：要求调用 MCP 工具并把返回值原样回话（P-11 的判据是 fixture 的答案）。
+        // 这是 harness 侧行为：SDK 只把本轮可用的 MCP 服务器并集交给我们。
+        if (ctx.input.contains("Call the tool ")) {
+            match (callToolFromInput(ctx, sink)) {
+                case Some(outcome) => return outcome
+                case None => ()   // 连不上就退回普通回话，别让整个任务失败
+            }
+        }
         // 产物场景：Create a file named <name> containing exactly: <content>
         if (ctx.input.contains("Create a file named")) {
             let name = between(ctx.input, "Create a file named", "containing exactly:")
@@ -66,6 +76,79 @@ class SutHarness <: HarnessDriver {
         }
         return TurnOutcome.Completed(None)
     }
+}
+
+// 从 prompt 里认出工具名与参数，连上第一个 http MCP server 调一次，把答案回话。
+func callToolFromInput(ctx: TurnContext, sink: TurnSink): Option<TurnOutcome> {
+    let toolName = between(ctx.input, "Call the tool ", " with")
+    if (toolName.size == 0) {
+        return None
+    }
+    // 参数：fixture 的 echo 工具收 text；从 prompt 的 "with the text <nonce>" 里取
+    let nonce = match (markerValue(ctx.input, "with the text ")) {
+        case Some(v) => v
+        case None => ""
+    }
+    if (nonce.size == 0) {
+        return None
+    }
+    eprintln("mcp: servers=" + ctx.mcpServers.size.toString() + " tool=" + toolName + " nonce=" + nonce)
+    for (server in ctx.mcpServers) {
+        let url = httpUrlOf(server)
+        match (url) {
+            case Some(u) =>
+                let client = McpClient(u)
+                let argOut = ByteBuffer()
+                let aw = JsonWriter(argOut)
+                aw.startObject()
+                aw.writeName("text").writeValue(nonce)
+                aw.endObject()
+                aw.flush()
+                let args = String.fromUtf8(argOut.bytes())
+                match (client.callTool(toolName.trimAscii(), args)) {
+                    case Some(answer) =>
+                        sink.textDelta(answer)
+                        return Some(TurnOutcome.Completed(None))
+                    case None => eprintln("mcp: call failed")
+                }
+            case None => ()
+        }
+    }
+    return None
+}
+
+// 从 JSON 服务器条目里取 http(s) url（stdio 不走网络）
+func httpUrlOf(serverJson: String): Option<String> {
+    match (tryParseJsonObject(serverJson)) {
+        case Some(o) =>
+            let transport = o.str("transport") ?? ""
+            if (transport == "http" || transport == "sse") {
+                return o.str("url")
+            }
+            return None
+        case None => return None
+    }
+}
+
+// 取某个标记之后的第一个词
+func markerValue(s: String, marker: String): Option<String> {
+    let i = match (s.indexOf(marker)) {
+        case Some(v) => v + marker.size
+        case None => return None
+    }
+    let rest = s[i..s.size].trimAscii()
+    let arr = rest.toRuneArray()
+    var end = arr.size
+    for (k in 0..arr.size) {
+        if (arr[k] == r' ' || arr[k] == r',' || arr[k] == r'.') {
+            end = k
+            break
+        }
+    }
+    if (end == 0) {
+        return None
+    }
+    return Some(String(arr[0..end]))
 }
 
 func between(s: String, start: String, end: String): String {
@@ -105,6 +188,9 @@ main(): Int64 {
         .port(port)
         .distributor(uhp.distributor())
         .build()
+    // MCP fixture 跑在 port+1：套件用 --plugin-mcp-url 指向它（本地即可，CI 不依赖公网）
+    let mcpPort = startMcpFixture(port + 1)
+    println("MCP-LISTENING " + mcpPort.toString())
     println("LISTENING " + server.port.toString())
     server.serve()
     return 0

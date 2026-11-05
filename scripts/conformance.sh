@@ -50,8 +50,10 @@ REPORT="$ROOT/docs/conformance/pending-$CLASS.json"
 
 # 失败也要把报告落盘——报告最该在失败时存在。先吞退出码，落盘后再按它退出。
 set +e
+# 插件的 MCP server 指向 SUT 进程内的本地 fixture（port+1）：CI 不依赖公网
 PYTHONPATH=. ./venv/bin/python .run_conformance.py \
   --base-url "http://127.0.0.1:$PORT" --api-key "$API_KEY" \
+  --plugin-mcp-url "http://127.0.0.1:$((PORT + 1))/mcp" \
   --class "$CLASS" --task-timeout 60 --plain --json "$REPORT"
 SUITE_EXIT=$?
 set -e

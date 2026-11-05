@@ -9,6 +9,7 @@ package uhp.transport
 import std.collection.{ArrayList, HashMap}
 import std.io.*
 import stdx.net.http.*
+import stdx.net.tls.*
 
 public class StdHttpTransport <: HttpTransport {
     private let baseUrl: String
@@ -119,4 +120,45 @@ func readAll(body: InputStream): String {
         chunks.add(all: buf[0..n])
     }
     return String.fromUtf8(chunks.toArray())
+}
+
+// 一个最小的一次性 HTTP POST（返回状态/头/文本体）。
+// 给「harness 侧要自己连 MCP server」这类场景用：SDK 不执行 MCP，但可以提供一个不泄漏抽象的 HTTP 工具。
+public class RawHttpResponse {
+    public let status: UInt16
+    public let headers: HashMap<String, String>
+    public let body: String
+
+    public init(status: UInt16, headers: HashMap<String, String>, body: String) {
+        this.status = status
+        this.headers = headers
+        this.body = body
+    }
+
+    public func header(name: String): Option<String> {
+        let lower = name.toAsciiLower()
+        for ((k, v) in this.headers) {
+            if (k.toAsciiLower() == lower) {
+                return Some(v)
+            }
+        }
+        return None
+    }
+}
+
+public func rawHttpPost(url: String, headers: HashMap<String, String>, body: String): RawHttpResponse {
+    // HTTPS 必须显式给 TLS 配置，否则 stdx.net.http 直接拒绝（实测）。
+    // 强制 HTTP/1.1：某些 MCP 网关在 h2 下会直接 reset（实测 104）。
+    let tls = TlsClientConfig()
+    let client = ClientBuilder().tlsConfig(tls).noProxy().readTimeout(Duration.second * 60).build()
+    try {
+        var builder = HttpRequestBuilder().method("POST").url(url)
+        for ((k, v) in headers) {
+            builder = builder.header(k, v)
+        }
+        let rsp = client.send(builder.body(body).build())
+        return RawHttpResponse(rsp.status, headersToMap(rsp.headers), readAll(rsp.body))
+    } finally {
+        client.close()
+    }
 }

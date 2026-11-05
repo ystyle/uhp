@@ -3,7 +3,7 @@
   "protocol_version": "2026-10-19",
   "suite_protocol_version": "2026-10-19",
   "suite_version": "2026.10.19.post5",
-  "generated_at": "2026-11-05T07:51:22Z",
+  "generated_at": "2026-11-05T08:02:38Z",
   "target": "http://127.0.0.1:8471",
   "target_label": "",
   "implementation": {
@@ -12,7 +12,7 @@
   },
   "requested_class": "full",
   "conformant": false,
-  "conformant_with_skips": false,
+  "conformant_with_skips": true,
   "skipped_not_verified": [
     "T-12",
     "T-13",
@@ -57,8 +57,8 @@
   },
   "highest_class_passed": "extended",
   "summary": {
-    "pass": 70,
-    "fail": 1,
+    "pass": 71,
+    "fail": 0,
     "skip": 33,
     "error": 0,
     "total": 104
@@ -238,7 +238,7 @@
       "class": "core",
       "spec": "protocol/versions/2026-10-19/lifecycle.md#4-session-lifecycle",
       "outcome": "pass",
-      "detail": "session_id=hsess175269441170547298316040879831833559774"
+      "detail": "session_id=hsess64570876579756559083714681310915160076"
     },
     {
       "id": "T-05",
@@ -350,7 +350,7 @@
       "class": "core",
       "spec": "protocol/versions/2026-10-19/sessions.md#1-continuing-a-session",
       "outcome": "pass",
-      "detail": "session hsess175269441170547298316040879831833559774 extended"
+      "detail": "session hsess64570876579756559083714681310915160076 extended"
     },
     {
       "id": "C-02",
@@ -446,7 +446,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/harnesses.md#4-managing-harnesses",
       "outcome": "pass",
-      "detail": "created, updated and deleted chrn_174927965290952525289290078642900418490"
+      "detail": "created, updated and deleted chrn_1538668583990134669818164585249193859794"
     },
     {
       "id": "F-03",
@@ -526,7 +526,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/plugins.md#5-exporting-a-harness-as-a-plugin",
       "outcome": "pass",
-      "detail": "exported 5 files as 'uhp-conformance-df91d1', reinstalled"
+      "detail": "exported 5 files as 'uhp-conformance-22d24d', reinstalled"
     },
     {
       "id": "P-07",
@@ -557,8 +557,8 @@
       "title": "A plugin's MCP server answers the agent's tool call",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/plugins.md#4-binding-at-run-time",
-      "outcome": "fail",
-      "detail": "the reply does not carry the fixture's answer 'UHP-FIXTURE:4f4276b83e' (status=completed, output='[{\"type\": \"message\", \"status\": \"completed\", \"role\": \"assistant\", \"content\": [{\"type\": \"output_text\", \"text\": \"This is the UHP conformance SUT. It echoes a deterministic reply so that protocol behaviour, not model quality, is what gets measu'). The agent never reached the plugin's server: either the host did not bind it at run time or the sandbox cannot reach https://uhp-fixture.harnessrouter.ai/mcp."
+      "outcome": "pass",
+      "detail": "the fixture answered through the plugin in 0.0s"
     },
     {
       "id": "P-10",
@@ -582,7 +582,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/sessions.md#6-deleting",
       "outcome": "pass",
-      "detail": "deleted hsess1193996740386865649010356953576059951320, now 404"
+      "detail": "deleted hsess1588306118911806593016117699223603317899, now 404"
     },
     {
       "id": "F-09",
@@ -590,7 +590,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/harnesses.md#53-delete",
       "outcome": "pass",
-      "detail": "kept: hsess592117758996664290618226489555285171711 still reads after its harness was deleted"
+      "detail": "kept: hsess972045227130836108614876800363223079335 still reads after its harness was deleted"
     },
     {
       "id": "F-10",
@@ -598,7 +598,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/harnesses.md#51-create",
       "outcome": "pass",
-      "detail": "chrn_116769235641871398584243901700019333492 returned for both attempts, a changed request refused with 409, made again after its delete"
+      "detail": "chrn_306472227230385146114719130585869687786 returned for both attempts, a changed request refused with 409, made again after its delete"
     },
     {
       "id": "F-02",
@@ -638,7 +638,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/tasks.md#11-request-fields",
       "outcome": "skip",
-      "detail": "the fixture's tool uhp_steps was never called, so no work was cut at the budget and nothing was measured. The fixture at https://uhp-fixture.harnessrouter.ai/mcp may predate this check's tool."
+      "detail": "the fixture's tool uhp_steps was never called, so no work was cut at the budget and nothing was measured. The fixture at http://127.0.0.1:8472/mcp may predate this check's tool."
     },
     {
       "id": "T-13",

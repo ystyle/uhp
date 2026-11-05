@@ -53,12 +53,17 @@ public class TurnContext {
     public let input: String
     public let model: String
     public let maxStep: Option<Int64>
+    // 本轮可用的 MCP 服务器（直接配置 + 启用插件的并集，每轮重算）。
+    // 元素是 McpServer 的 JSON 文本：driver 自己决定怎么连（UHP 不执行 MCP）。
+    public let mcpServers: Array<String>
 
-    public init(sessionId: String, input: String, model: String, maxStep!: Option<Int64> = None) {
+    public init(sessionId: String, input: String, model: String, maxStep!: Option<Int64> = None,
+                mcpServers!: Array<String> = []) {
         this.sessionId = sessionId
         this.input = input
         this.model = model
         this.maxStep = maxStep
+        this.mcpServers = mcpServers
     }
 }
 
