@@ -62,8 +62,11 @@ codec  <-  base  <-  generated  <-  handwritten
 4. **`absent ≠ null ≠ 空`**：可空字段用 `Option<T>`；协议要求「键必须存在、值可为 null」的字段，`None` 时也要写 `null`；
    「空数组」有语义时（如 `skipped`）必须写 `[]`，不能省略。
 5. **手写层不重复生成对象的 JSON 键名**：生成对象（Harness / Response / Memory…）的字段名与序列化只来自 `generated/`。
-   唯一例外是 `base/capability.cj`：schema 无法表达「16 个布尔必须全部写出」，故保留手写；
-   生成器（`tools/gen_types.py` 的 `SKIP` 集合）明确跳过它。若生成器将来支持该语义，迁回 `generated/`。
+   目前 `tools/gen_types.py` 的 `SKIP` 集合有三个，理由各不相同，**新增 SKIP 必须在此登记**：
+   - `Capabilities`（`base/capability.cj`）：schema 无法表达「16 个布尔必须全部写出 / 缺省 false」；
+   - `Event`（`handwritten/event.cj`）：schema 里没有 discriminated union，手写 `UhpEvent` 独占；
+   - `ErrorEnvelope`（`handwritten/error.cj`）：信封语义（sanitize、重试分类、6 键必写含 null）属行为，schema 表达不了。
+   生成层保留 `ErrorObject` 供 `Response.error` 引用；**同一协议对象不允许两处维护**。
 6. **时间单位必须在类型上区分**：Unix 毫秒 / Unix 秒 / ISO 8601 三种形态并存（设计 §4.4），
    用 `UnixMillis` / `UnixSeconds` 之类的 newtype，**禁止裸 `Int64` 混用**。
 

@@ -25,7 +25,8 @@ OUT = os.path.join(ROOT, "src", "types", "generated")
 # 由手写层负责、生成器必须跳过的定义：
 #  * Capabilities：schema 无法表达「16 个 bool 必须全写 / 缺省 false」的语义（见 AGENTS.md 例外）
 #  * Event：schema 里没有 discriminated union，手写层 UhpEvent 独占（18 变体 + Unknown）
-SKIP = {"Capabilities", "Event"}
+#  * ErrorEnvelope：手写层持有（sanitize/重试/6 键必写的语义），生成层只保留 ErrorObject 供 Response.error 引用
+SKIP = {"Capabilities", "Event", "ErrorEnvelope"}
 
 # 依赖的公共类型（手写块，位于 uhp.types.handwritten）
 EXTERNAL = set()

@@ -255,35 +255,6 @@ public class ErrorObject <: JsonSerializable & JsonDeserializable<ErrorObject> {
     }
 }
 
-public class ErrorEnvelope <: JsonSerializable & JsonDeserializable<ErrorEnvelope> {
-    public var error: ErrorObject = ErrorObject()
-    public var detail: Option<String> = None
-    // 未知字段：保真存放，回写时不丢（上游所有对象节点都是开放的）
-    public var extras: Extras = newExtras()
-    public init() {}
-    public func toJson(w: JsonWriter): Unit {
-        w.startObject()
-                w.writeName("error"); this.error.toJson(w)
-        if (let Some(v) <- this.detail) {
-                        w.writeName("detail").writeValue(v)
-        }
-        writeExtras(w, this.extras)
-        w.endObject()
-    }
-    public static func fromJson(r: JsonReader): ErrorEnvelope {
-        let res = ErrorEnvelope()
-        fromJsonObjectWithExtras(
-            r,
-            [
-                ("error", { => res.error = r.readValue<ErrorObject>() }),
-                ("detail", { => res.detail = r.readValue<Option<String>>() })
-            ],
-            res.extras
-        )
-        return res
-    }
-}
-
 public class InputResponse <: JsonSerializable & JsonDeserializable<InputResponse> {
     public var typeName: String = ""
     public var input_request_id: String = ""
