@@ -148,10 +148,10 @@ public class AcpDriver <: HarnessDriver {
                 state.promptError = None
             }
             let st = state
-            let input = ctx.input
+            let blocks = buildPromptBlocks(ctx)
             let c = client
             spawn {
-                let res = c.promptText(acpSession, input,
+                let res = c.prompt(acpSession, blocks,
                     timeout: Duration.second * this.opts.timeoutSeconds)
                 let st2 = st
                 synchronized(this.lock) {
@@ -416,4 +416,63 @@ func outcomeOf(stopReason: String): TurnOutcome {
 
 public func nowMillis(): Int64 {
     return DateTime.now().toUnixTimeStamp().toMilliseconds()
+}
+
+
+// 把 UHP 的输入文件映射成 ACP 内容块：
+//   image/*    -> image 块（base64 + mimeType）
+//   text/*     -> text 块（文件名 + 内容拼成一段文本）
+//   其它二进制 -> resource_link（data URI + 文件名）
+func buildPromptBlocks(ctx: TurnContext): ArrayList<ContentBlock> {
+    let blocks = ArrayList<ContentBlock>()
+    blocks.add(ContentBlock.ofText(ctx.input))
+    for (f in ctx.files) {
+        if (f.mediaType.startsWith("image/")) {
+            blocks.add(ContentBlock.image(base64Encode(f.bytes), f.mediaType))
+        } else if (f.mediaType.startsWith("text/")) {
+            blocks.add(ContentBlock.ofText("File " + f.filename + "|" + String.fromUtf8(f.bytes)))
+        } else {
+            blocks.add(ContentBlock.resourceLink(
+                "data:" + f.mediaType + ";base64," + base64Encode(f.bytes), f.filename))
+        }
+    }
+    return blocks
+}
+
+func base64Encode(bytes: Array<UInt8>): String {
+    let table = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+    let chars = ArrayList<UInt8>()
+    var i = 0
+    while (i + 2 < bytes.size) {
+        let n = (Int64(bytes[i]) << 16) | (Int64(bytes[i + 1]) << 8) | Int64(bytes[i + 2])
+        chars.add(UInt8((n >> 18) & 63))
+        chars.add(UInt8((n >> 12) & 63))
+        chars.add(UInt8((n >> 6) & 63))
+        chars.add(UInt8(n & 63))
+        i = i + 3
+    }
+    let rem = bytes.size - i
+    if (rem == 1) {
+        let n = Int64(bytes[i]) << 16
+        chars.add(UInt8((n >> 18) & 63))
+        chars.add(UInt8((n >> 12) & 63))
+        chars.add(UInt8(64))
+        chars.add(UInt8(64))
+    } else if (rem == 2) {
+        let n = (Int64(bytes[i]) << 16) | (Int64(bytes[i + 1]) << 8)
+        chars.add(UInt8((n >> 18) & 63))
+        chars.add(UInt8((n >> 12) & 63))
+        chars.add(UInt8((n >> 6) & 63))
+        chars.add(UInt8(64))
+    }
+    let out = ArrayList<UInt8>()
+    for (c in chars) {
+        let idx = Int64(c)
+        if (idx == 64) {
+            out.add(UInt8(61))
+        } else {
+            out.add(table[idx])
+        }
+    }
+    return String.fromUtf8(out.toArray())
 }

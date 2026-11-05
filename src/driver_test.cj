@@ -323,3 +323,24 @@ func full_stack_acp_question_flows_through_uhp_server(): Unit {
     @Expect(second.contains("perm answered: once"), true)
     server.close()
 }
+
+
+@Test
+func input_files_are_mapped_to_acp_content_blocks(): Unit {
+    let driver = AcpDriver(optionsFor())
+    let sink = RecordingSink()
+    let files = [
+        TurnFile("notes.txt", "text/plain", "alpha".toArray()),
+        TurnFile("pic.png", "image/png", [0x89, 0x50, 0x4e, 0x47])
+    ]
+    let ctx = TurnContext("uhp-acp-files", "files please", "m", files: files)
+    let outcome = driver.run(ctx, sink, CancelToken())
+    var completed = false
+    match (outcome) {
+        case TurnOutcome.Completed(_) => completed = true
+        case _ => ()
+    }
+    @Expect(completed, true)
+    // 1 个文本块 + 2 个文件块（txt 走 text 块、png 走 image 块）
+    @Expect(sink.text.contains("files: 3 images: 1"), true)
+}

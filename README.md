@@ -19,7 +19,7 @@ ACP（Agent Client Protocol）的 UHP HarnessDriver 适配器（消费方代码�
 | ACP | UHP |
 |---|---|
 | session/new（按 UHP 会话建一次） | TurnContext.sessionId 复用同一个 ACP 会话 |
-| session/prompt（内容块 = 一行文本） | TurnContext.input |
+| session/prompt（内容块） | TurnContext.input；TurnContext.files → image 块（base64）/ text 块（文件名+内容）/ resource_link（其它二进制） |
 | agent_message_chunk | TurnSink.textDelta |
 | agent_thought_chunk | TurnSink.reasoningDelta |
 | tool_call（title + rawInput） | TurnSink.toolCall(name, args) |
@@ -56,5 +56,5 @@ bash scripts/real-smoke.sh                   # opencode acp 真实链路（需�
 1. permission 已接：把 **prompt 放到后台线程**跑，回调阻塞等下一轮的答案；当前轮以
    incomplete+input_request 结束，下一轮把答案写入挂起槽，回调返回 selected(optionId)，
    Agent 继续，该轮 run 等后台 prompt 结束再返回终态。
-2. **文件/图片内容块未映射**：UHP 的 files_input 还没进 prompt，ACP 的 image/resource 块被忽略。
+2. 文件输入已映射成内容块；输出方向与 ACP 的 elicitation（表单）尚未接。
 3. 会话级 config/mode（model 选择）未暴露成 UHP 侧参数：由 ACP agent 自己的配置决定。

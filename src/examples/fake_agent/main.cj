@@ -17,6 +17,18 @@ main() {
     let agent = AcpAgent(StdioTransport(), "uhp-fake-acp-agent", "0.1.0")
     agent.setPromptHandler({ ctx =>
         let text = ctx.getText()
+        if (text.contains("files")) {
+            var images = 0
+            for (b in ctx.prompt) {
+                match (b.mimeType) {
+                    case Some(_) => images = images + 1
+                    case None => ()
+                }
+            }
+            ctx.emit(SessionUpdate.agentMessage("files: " + ctx.prompt.size.toString() +
+                " images: " + images.toString()))
+            return PromptResponse(StopReasonEndTurn)
+        }
         if (text.contains("refuse")) {
             return PromptResponse(StopReasonRefusal)
         }
