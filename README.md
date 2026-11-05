@@ -51,7 +51,7 @@ uhp-cj/
 │   ├── gen_types.py          # 生成 src/types/generated/（带 --check）
 │   └── overlay/              # 生成器的手写补丁（规划）
 ├── scripts/test.sh         # 本仓一条命令验证：环境 + build + test
-├── docs/                   # 规划：design / support / protocol-notes / spec-conflicts / roadmap
+├── docs/                   # design / support / protocol-notes / spec-conflicts / conformance/
 └── src/
     ├── root.cj             # package uhp：只做 public import，不承载实现
     ├── types/
@@ -102,10 +102,17 @@ python3 tools/gen_types.py --check    # 生成物是否最新（不一致退出�
 
 ## 设计文档
 
-仓内 `docs/` 尚未落地（规划：`design.md` / `support.md` / `protocol-notes.md` /
-`spec-conflicts.md` / `roadmap.md` / `conformance/`）。
-当前设计稿在工作区：`../docs/plans/2026-11-05-uhp-cj-sdk.md`
-（决策 D1–D14、规范裁定表、端点总账、真实 harness 选型）。
+仓内文档（与代码同版本演进）：
+
+| 文件 | 回答什么 |
+|---|---|
+| [`docs/design.md`](docs/design.md) | 为什么这样分层、取舍、有意不做 |
+| [`docs/support.md`](docs/support.md) | **实现边界的单一事实来源**：端点 × 类 × 能力 |
+| [`docs/protocol-notes.md`](docs/protocol-notes.md) | 易踩点：顺序、时间单位、命名、不变式 |
+| [`docs/spec-conflicts.md`](docs/spec-conflicts.md) | 三份真相冲突时的裁定，每条带锚点 |
+| [`docs/conformance/`](docs/conformance/) | 一致性报告（带 `suite_version`） |
+
+协议来源的调研与决策记录在工作区：`../docs/plans/2026-11-05-uhp-cj-sdk.md`（D1–D14、端点总账、真实 harness 选型）。
 
 ## 依赖边界
 
