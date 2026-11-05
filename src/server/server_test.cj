@@ -116,7 +116,24 @@ class RecordingSink <: TurnSink {
         this.files.add((filename, String.fromUtf8(content)))
     }
 
+    public func ask(kind: String, prompt: String, options: Array<(String, String)>): String {
+        this.asks.add(kind)
+        return "inreq_test"
+    }
+
+    public func toolCall(name: String, arguments: String): String {
+        this.toolCalls.add(name)
+        return "call_test_" + this.toolCalls.size.toString()
+    }
+
+    public func toolResult(callId: String, output: String): Unit {
+        this.toolResults.add((callId, output))
+    }
+
     public var files: ArrayList<(String, String)> = ArrayList<(String, String)>()
+    public var asks: ArrayList<String> = ArrayList<String>()
+    public var toolCalls: ArrayList<String> = ArrayList<String>()
+    public var toolResults: ArrayList<(String, String)> = ArrayList<(String, String)>()
 }
 
 @Test

@@ -56,14 +56,17 @@ public class TurnContext {
     // 本轮可用的 MCP 服务器（直接配置 + 启用插件的并集，每轮重算）。
     // 元素是 McpServer 的 JSON 文本：driver 自己决定怎么连（UHP 不执行 MCP）。
     public let mcpServers: Array<String>
+    // 本轮如果是「回答一个问题」的续跑，这里带人名下已答的答案（driver 不用自己去翻历史）
+    public let answers: Array<String>
 
     public init(sessionId: String, input: String, model: String, maxStep!: Option<Int64> = None,
-                mcpServers!: Array<String> = []) {
+                mcpServers!: Array<String> = [], answers!: Array<String> = []) {
         this.sessionId = sessionId
         this.input = input
         this.model = model
         this.maxStep = maxStep
         this.mcpServers = mcpServers
+        this.answers = answers
     }
 }
 
@@ -77,6 +80,13 @@ public interface TurnSink {
     // driver 在会话工作目录里产出的文件。由 driver 声明（它拥有工作目录与工具），
     // SDK 负责登记成产物（Session -> Container -> File）。
     func producedFile(filename: String, content: Array<UInt8>): Unit
+    // 向人提问（Tasks §3.2）：返回 input_request 的 id，driver 随后结束本轮。
+    // 问题本身由 SDK 落成 items 与事件；答案通过下一次续跑的 TurnContext.answers 回到 driver。
+    func ask(kind: String, prompt: String, options: Array<(String, String)>): String
+    // 一次工具调用（§1.1 的 step 以「调用 + 结果」为一轮）。返回 call_id，
+    // driver 拿到结果后用 toolResult 回填——两半都成为 response 的 output items。
+    func toolCall(name: String, arguments: String): String
+    func toolResult(callId: String, output: String): Unit
 }
 
 public class HarnessCapabilities {

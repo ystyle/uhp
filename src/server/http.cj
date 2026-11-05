@@ -320,7 +320,8 @@ public class UhpHttpServer {
         let parsed = parseTaskRequest(body)
         let req = TaskRequest(parsed.input, model: parsed.model, harnessId: parsed.harnessId,
             previousResponseId: parsed.previousResponseId, background: parsed.background,
-            ignoredFields: parsed.ignored.toArray())
+            ignoredFields: parsed.ignored.toArray(), inputResponse: parsed.inputResponse,
+            maxStep: parsed.maxStep)
         if (parsed.stream) {
             // 流式：立刻建流，事件边产生边发（不能等任务跑完再一把刷，套件 S-09 会抓）
             let started = this.engine.startTask(principal, req)
@@ -458,6 +459,9 @@ public class ParsedTaskRequest {
     public var background: Bool = false
     // 客户端发了但服务端不执行的字段（规范 §1.4 的两个保留字段）
     public var ignored: ArrayList<String> = ArrayList<String>()
+    // 回答一个问题（§3.2）：input_response item 的 input_request_id + answer
+    public var inputResponse: Option<(String, String)> = None
+    public var maxStep: Option<Int64> = None
 }
 
 func parseTaskRequest(body: String): ParsedTaskRequest {
@@ -475,7 +479,7 @@ func parseTaskRequest(body: String): ParsedTaskRequest {
         }
         match (name) {
             // input 是 string | item[]：M2 只吃 string，数组形式按 items 里的 input_text 拼接
-            case "input" => out.input = readInput(r)
+            case "input" => out.input = readInput(r, out)
             case "model" => out.model = Some(r.readValue<String>())
             case "stream" => out.stream = r.readValue<Bool>()
             case "background" => out.background = r.readValue<Bool>()
@@ -487,6 +491,7 @@ func parseTaskRequest(body: String): ParsedTaskRequest {
                 r.skip()
                 out.ignored.add("include")
             case "previous_response_id" => out.previousResponseId = Some(r.readValue<String>())
+            case "max_step" => out.maxStep = Some(r.readValue<Int64>())
             case "metadata" => out.harnessId = readHarnessId(r)
             case _ => r.skip()
         }
@@ -495,7 +500,7 @@ func parseTaskRequest(body: String): ParsedTaskRequest {
     return out
 }
 
-func readInput(r: JsonReader): String {
+func readInput(r: JsonReader, out: ParsedTaskRequest): String {
     match (r.peek()) {
         case Some(JsonToken.JsonString) => return r.readValue<String>()
         case Some(JsonToken.BeginArray) =>
@@ -506,9 +511,25 @@ func readInput(r: JsonReader): String {
                 match (r.peek()) {
                     case Some(JsonToken.EndArray) => break
                     case Some(JsonToken.BeginObject) =>
-                        let text = readItemText(r)
-                        if (text.size > 0) {
-                            parts.add(text)
+                        // input_response 是「回答一个问题」：不走文本拼接，交给 out.inputResponse
+                        let raw = String.fromUtf8(r.readValueBytes())
+                        if (raw.contains("\"input_response\"")) {
+                            match (tryParseJsonObject(raw)) {
+                                case Some(o) =>
+                                    let rid = o.str("input_request_id") ?? ""
+                                    let answer = o.str("answer") ?? ""
+                                    if (rid.size > 0) {
+                                        out.inputResponse = Some((rid, answer))
+                                        out.input = answer
+                                    }
+                                case None => ()
+                            }
+                        } else {
+                            let rr = JsonReader(ByteBuffer(raw.toArray()))
+                            let text = readItemText(rr)
+                            if (text.size > 0) {
+                                parts.add(text)
+                            }
                         }
                     case _ =>
                         r.skip()

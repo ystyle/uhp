@@ -9,6 +9,8 @@
 package uhp.examples.conformance_sut
 
 import std.collection.{ArrayList, HashMap}
+import std.io.ByteBuffer
+import stdx.encoding.json.stream.*
 import std.io.*
 import stdx.net.http.*
 
@@ -90,7 +92,10 @@ func mcpHandler(ctx: HttpContext): Unit {
             "\"required\":[\"nonce\"]}}]}"
         case "tools/call" =>
             let name = stringField(body, "name") ?? ""
-            if (name == "uhp_echo") {
+            if (name == "uhp_steps") {
+                let nonce = stringField(body, "nonce") ?? ""
+                stepResultJson(nonce)
+            } else if (name == "uhp_echo") {
                 let text = stringField(body, "text") ?? ""
                 "{\"content\":[{\"type\":\"text\",\"text\":\"UHP-FIXTURE:" + reverse(text) + "\"}],\"isError\":false}"
             } else {
@@ -104,6 +109,38 @@ func mcpHandler(ctx: HttpContext): Unit {
     }
     let out = "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"result\":" + result + "}"
     ctx.responseBuilder.status(UInt16(200)).body(out)
+}
+
+// 链的答案：step N of 3；最后一步说 done（套件按这个格式判断）
+var stepCounts: HashMap<String, Int64> = HashMap<String, Int64>()
+
+func stepResultJson(nonce: String): String {
+    let text = stepAnswer(nonce)
+    let out = ByteBuffer()
+    let w = JsonWriter(out)
+    w.startObject()
+    w.writeName("content")
+    w.startArray()
+    w.startObject()
+    w.writeName("type").writeValue("text")
+    w.writeName("text").writeValue(text)
+    w.endObject()
+    w.endArray()
+    w.writeName("isError").writeValue(false)
+    w.endObject()
+    w.flush()
+    return String.fromUtf8(out.bytes())
+}
+
+func stepAnswer(nonce: String): String {
+    let prev = stepCounts.get(nonce) ?? 0
+    let step = prev + 1
+    stepCounts[nonce] = step
+    let head = "UHP-FIXTURE step " + step.toString() + " of 3"
+    if (step < 3) {
+        return head + "; call uhp_steps again to continue"
+    }
+    return head + "; the chain is done"
 }
 
 func readBodyText(body: InputStream): String {

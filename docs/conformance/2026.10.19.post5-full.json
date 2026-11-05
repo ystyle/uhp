@@ -3,7 +3,7 @@
   "protocol_version": "2026-10-19",
   "suite_protocol_version": "2026-10-19",
   "suite_version": "2026.10.19.post5",
-  "generated_at": "2026-11-05T08:04:37Z",
+  "generated_at": "2026-11-05T08:10:34Z",
   "target": "http://127.0.0.1:8471",
   "target_label": "",
   "implementation": {
@@ -14,9 +14,6 @@
   "conformant": false,
   "conformant_with_skips": true,
   "skipped_not_verified": [
-    "T-12",
-    "T-13",
-    "T-14",
     "EN-01",
     "EN-02",
     "EN-03",
@@ -49,9 +46,9 @@
   },
   "highest_class_passed": "extended",
   "summary": {
-    "pass": 79,
+    "pass": 82,
     "fail": 0,
-    "skip": 25,
+    "skip": 22,
     "error": 0,
     "total": 104
   },
@@ -230,7 +227,7 @@
       "class": "core",
       "spec": "protocol/versions/2026-10-19/lifecycle.md#4-session-lifecycle",
       "outcome": "pass",
-      "detail": "session_id=hsess21575612806655085151346647105975948076"
+      "detail": "session_id=hsess1730527685025843077715753349860465117768"
     },
     {
       "id": "T-05",
@@ -342,7 +339,7 @@
       "class": "core",
       "spec": "protocol/versions/2026-10-19/sessions.md#1-continuing-a-session",
       "outcome": "pass",
-      "detail": "session hsess21575612806655085151346647105975948076 extended"
+      "detail": "session hsess1730527685025843077715753349860465117768 extended"
     },
     {
       "id": "C-02",
@@ -438,7 +435,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/harnesses.md#4-managing-harnesses",
       "outcome": "pass",
-      "detail": "created, updated and deleted chrn_790441429556449238911734730295447798115"
+      "detail": "created, updated and deleted chrn_1324504718139792685517613669496311875444"
     },
     {
       "id": "F-03",
@@ -518,7 +515,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/plugins.md#5-exporting-a-harness-as-a-plugin",
       "outcome": "pass",
-      "detail": "exported 5 files as 'uhp-conformance-9181fc', reinstalled"
+      "detail": "exported 5 files as 'uhp-conformance-d74906', reinstalled"
     },
     {
       "id": "P-07",
@@ -574,7 +571,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/sessions.md#6-deleting",
       "outcome": "pass",
-      "detail": "deleted hsess1734900169369589627113405303911022102634, now 404"
+      "detail": "deleted hsess502840091941474061218329201039627259350, now 404"
     },
     {
       "id": "F-09",
@@ -582,7 +579,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/harnesses.md#53-delete",
       "outcome": "pass",
-      "detail": "kept: hsess1086963771637221949768832253570000236 still reads after its harness was deleted"
+      "detail": "kept: hsess1753132950113812118611588040665179634875 still reads after its harness was deleted"
     },
     {
       "id": "F-10",
@@ -590,7 +587,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/harnesses.md#51-create",
       "outcome": "pass",
-      "detail": "chrn_1806104544342580794410244367873551824084 returned for both attempts, a changed request refused with 409, made again after its delete"
+      "detail": "chrn_76127657207094693355812016289009428539 returned for both attempts, a changed request refused with 409, made again after its delete"
     },
     {
       "id": "F-02",
@@ -629,24 +626,24 @@
       "title": "A task over its step budget ends incomplete, naming the budget",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/tasks.md#11-request-fields",
-      "outcome": "skip",
-      "detail": "the fixture's tool uhp_steps was never called, so no work was cut at the budget and nothing was measured. The fixture at http://127.0.0.1:8472/mcp may predate this check's tool."
+      "outcome": "pass",
+      "detail": "incomplete after 1 round(s): max_steps"
     },
     {
       "id": "T-13",
       "title": "A task ends on a question for the person, and its answer continues it",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/tasks.md#32-asking-the-person",
-      "outcome": "skip",
-      "detail": "this server does not report the input_requests capability"
+      "outcome": "pass",
+      "detail": "asked inreq_560335723987289364114722191272313495992 (choice, 2 options); 422 outside the options, 409 for a stale id, answered once (completed), 409 again"
     },
     {
       "id": "T-14",
       "title": "A secret answer reaches the harness and nothing a client reads",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/tasks.md#32-asking-the-person",
-      "outcome": "skip",
-      "detail": "this server does not report the input_requests capability"
+      "outcome": "pass",
+      "detail": "the secret appears in none of 4 places a client reads"
     },
     {
       "id": "R-01",
@@ -654,7 +651,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/sessions.md#5-session-sharing",
       "outcome": "pass",
-      "detail": "readable unauthenticated at /v1/shared/1439204900315114693416596252973946423591"
+      "detail": "readable unauthenticated at /v1/shared/54243727763531605209501193429689919096"
     },
     {
       "id": "R-02",
@@ -694,7 +691,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/sessions.md#5-session-sharing",
       "outcome": "pass",
-      "detail": "revoked via DELETE /v1/sessions/hsess21575612806655085151346647105975948076/share; 2 link(s) minted, all now 404/404"
+      "detail": "revoked via DELETE /v1/sessions/hsess1730527685025843077715753349860465117768/share; 2 link(s) minted, all now 404/404"
     },
     {
       "id": "R-07",

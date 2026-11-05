@@ -91,16 +91,23 @@ public class TaskRequest {
     // 客户端发了、但服务端不执行的字段（UHP 的 tools/include 是保留字段）：
     // 规范要求「忽略必须可观测」，必须出现在 metadata.ignored_fields 里。
     public let ignoredFields: Array<String>
+    // 续跑如果是「回答一个问题」：input_request_id + 答案（§3.2）
+    public let inputResponse: Option<(String, String)>
+    // §1.1 的 step 预算：超过了必须 incomplete，且不许报 completed
+    public let maxStep: Option<Int64>
 
     public init(input: String, model!: Option<String> = None, harnessId!: Option<String> = None,
                 previousResponseId!: Option<String> = None, background!: Bool = false,
-                ignoredFields!: Array<String> = []) {
+                ignoredFields!: Array<String> = [], inputResponse!: Option<(String, String)> = None,
+                maxStep!: Option<Int64> = None) {
         this.input = input
         this.model = model
         this.harnessId = harnessId
         this.previousResponseId = previousResponseId
         this.background = background
         this.ignoredFields = ignoredFields
+        this.inputResponse = inputResponse
+        this.maxStep = maxStep
     }
 }
 
@@ -147,6 +154,9 @@ public class Engine {
     // 分享（Sessions §5）与每个响应的文本（共享视图用，不存 provider 侧任何东西）
     private let shares: HashMap<String, ShareRecord> = HashMap<String, ShareRecord>()
     private let responseTexts: HashMap<String, String> = HashMap<String, String>()
+    // 待回答的问题（按 input_request id）与每个响应收到的输入 items（客户端可读，secret 除外）
+    private let inputRequests: HashMap<String, PendingInputRequest> = HashMap<String, PendingInputRequest>()
+    private let inputItems: HashMap<String, String> = HashMap<String, String>()
     private let versions: Array<String>
     private let cls: ConformanceClass
     private let capabilitiesValue: Capabilities
@@ -195,6 +205,7 @@ public class Engine {
                 caps.harnessIdempotency = true
                 caps.plugins = true
                 caps.sessionSharing = true
+                caps.inputRequests = true
         }
         this.capabilitiesValue = caps
     }
@@ -292,10 +303,33 @@ public class Engine {
         }
 
         let responseId = this.idSource.response()
+        // 回答一个问题：请求、选项、重复都要在开新响应之前判断（否则会留下一个孤儿响应）
+        match (req.inputResponse) {
+            case Some((requestId, answer)) =>
+                let pending = match (this.inputRequests.get(requestId)) {
+                    case Some(v) => v
+                    case None => throw EngineError("input_not_pending", UInt16(409), param: Some("input"))
+                }
+                if (pending.answered) {
+                    throw EngineError("input_not_pending", UInt16(409), param: Some("input"))
+                }
+                if (!pending.accepts(answer)) {
+                    throw EngineError("input_response_invalid", UInt16(422), param: Some("input"))
+                }
+                pending.answered = true
+            case None => ()
+        }
+        let previousId = match (req.inputResponse) {
+            case Some((requestId, _)) => match (this.inputRequests.get(requestId)) {
+                case Some(p) => Some(p.responseId)
+                case None => req.previousResponseId
+            }
+            case None => req.previousResponseId
+        }
         let sessionId: String
         let session: SessionState
         let previous: Option<Response>
-        match (req.previousResponseId) {
+        match (previousId) {
             case Some(prevId) =>
                 let prev = this.getStoredLocked(p, prevId)
                 sessionId = match (prev.response.metadata) {
@@ -351,6 +385,7 @@ public class Engine {
         // 事件 0：response.created（规范：created 必须是流的第一个事件）
         channel.emit("response.created", eventWithResponse("response.created", 0, resp))
         this.stored[responseId] = StoredResponse(p.name, resp, channel)
+        this.inputItems[responseId] = this.inputItemsJsonFor(req)
         match (this.records.get(sessionId)) {
             case Some(rec) =>
                 rec.responseIds.add(responseId)
@@ -374,14 +409,42 @@ public class Engine {
                 case Some(rec) => composedMcpServers(rec)
                 case None => Array<String>()
             }
-            harness.driver.run(TurnContext(sessionId, req.input, resp.model, mcpServers: mcpServers),
-                sink, CancelToken())
+            let answers = match (req.inputResponse) {
+                case Some((_, answer)) => [answer]
+                case None => Array<String>()
+            }
+            harness.driver.run(TurnContext(sessionId, req.input, resp.model, maxStep: req.maxStep,
+                mcpServers: mcpServers, answers: answers), sink, CancelToken())
         } catch (e: Exception) {
             // driver 抛异常 = failed(harness_error)，绝不允许吞成 completed
             TurnOutcome.Failed("harness_error", "harness failed")
         }
         synchronized(this.lock) {
-            let finalStatus = this.applyOutcome(resp, outcome, sink)
+            let pending = sink.pendingRequests()
+            let maxStep = req.maxStep
+            let overBudget = match (maxStep) {
+                case Some(n) => sink.rounds() > n
+                case None => false
+            }
+            let effective = if (pending.size > 0) {
+                match (outcome) {
+                    case TurnOutcome.Completed(_) => TurnOutcome.Incomplete(IncompleteReason.InputRequired, None)
+                    case other => other
+                }
+            } else if (overBudget) {
+                // 规范：被预算截断的工作绝不报 completed（否则客户端会把截断当成完成）
+                match (outcome) {
+                    case TurnOutcome.Failed(_, _) => outcome
+                    case TurnOutcome.Cancelled(_) => outcome
+                    case _ => TurnOutcome.Incomplete(IncompleteReason.MaxSteps, None)
+                }
+            } else {
+                outcome
+            }
+            let finalStatus = this.applyOutcome(resp, effective, sink)
+            if (pending.size > 0) {
+                this.finishWithQuestions(resp, pending)
+            }
             let terminalType = match (finalStatus) {
                 case TaskStatus.Completed => "response.completed"
                 case TaskStatus.Incomplete => "response.incomplete"
@@ -406,6 +469,81 @@ public class Engine {
                 case Some(s) => s.finish()
                 case None => ()
             }
+        }
+    }
+
+    // 问题落成 items：function_call（ask_user）+ 承载问题文本的 message + input_request
+    private func finishWithQuestions(resp: Response, pending: Array<PendingInputRequest>): Unit {
+        for (p in pending) {
+            this.inputRequests[p.id] = PendingInputRequest(p.id, resp.id, p.kind, p.prompt, p.options)
+        }
+        let items = ArrayList<OutputItem>()
+        for (o in resp.output) {
+            items.add(o)
+        }
+        for (p in pending) {
+            items.add(p.toFunctionCallItem())
+        }
+        var promptText = ""
+        for (p in pending) {
+            promptText = promptText + p.prompt + " "
+        }
+        let part = ContentPart()
+        part.typeName = "output_text"
+        part.text = Some(promptText)
+        let msg = OutputItem()
+        msg.id = Some("msg_" + resp.id)
+        msg.typeName = "message"
+        msg.role = Some("assistant")
+        msg.status = Some("incomplete")
+        msg.content = Some([part])
+        items.add(msg)
+        for (p in pending) {
+            items.add(p.toItem())
+        }
+        resp.output = items.toArray()
+    }
+
+    // 客户端可读的输入 items：secret 的答案**不写进来**（T-14 逐一检查）
+    private func inputItemsJsonFor(req: TaskRequest): String {
+        let out = ByteBuffer()
+        let w = JsonWriter(out)
+        w.startArray()
+        match (req.inputResponse) {
+            case Some((requestId, answer)) =>
+                let secret = match (this.inputRequests.get(requestId)) {
+                    case Some(p) => p.isSecret()
+                    case None => false
+                }
+                w.startObject()
+                w.writeName("type").writeValue("input_response")
+                w.writeName("input_request_id").writeValue(requestId)
+                if (!secret) {
+                    w.writeName("answer").writeValue(answer)
+                }
+                w.endObject()
+            case None =>
+                w.startObject()
+                w.writeName("type").writeValue("message")
+                w.writeName("role").writeValue("user")
+                w.writeName("content")
+                w.startArray()
+                w.startObject()
+                w.writeName("type").writeValue("input_text")
+                w.writeName("text").writeValue(req.input)
+                w.endObject()
+                w.endArray()
+                w.endObject()
+        }
+        w.endArray()
+        w.flush()
+        return String.fromUtf8(out.bytes())
+    }
+
+    public func responseInputItems(p: Principal, responseId: String): String {
+        synchronized(this.lock) {
+            let _ = this.getStoredLocked(p, responseId)
+            return this.inputItems.get(responseId) ?? "[]"
         }
     }
 
@@ -462,6 +600,25 @@ public class Engine {
             item.typeName = "function_call"
             item.name = Some("tool")
             item.arguments = Some(args)
+            item.status = Some("completed")
+            items.add(item)
+        }
+        for ((callId, name, args) in sink.toolCalls()) {
+            let item = OutputItem()
+            item.id = Some("fc_" + callId)
+            item.typeName = "function_call"
+            item.name = Some(name)
+            item.call_id = Some(callId)
+            item.arguments = Some(args)
+            item.status = Some("completed")
+            items.add(item)
+        }
+        for ((callId, output) in sink.toolResults()) {
+            let item = OutputItem()
+            item.id = Some("fco_" + callId)
+            item.typeName = "function_call_output"
+            item.call_id = Some(callId)
+            item.output = Some(output)
             item.status = Some("completed")
             items.add(item)
         }
@@ -929,6 +1086,54 @@ class EngineSink <: TurnSink {
     }
 
     private let artifacts: ArrayList<(String, Array<UInt8>)> = ArrayList<(String, Array<UInt8>)>()
+
+    // 待回答的问题：engine 在任务结束后把它们落成 items 与 incomplete 状态
+    private let pending: ArrayList<PendingInputRequest> = ArrayList<PendingInputRequest>()
+
+    private let calls: ArrayList<(String, String, String)> = ArrayList<(String, String, String)>()
+    private let results: ArrayList<(String, String)> = ArrayList<(String, String)>()
+
+    public func toolCall(name: String, arguments: String): String {
+        let callId = "call_" + this.ids.response()
+        this.calls.add((callId, name, arguments))
+        return callId
+    }
+
+    public func toolResult(callId: String, output: String): Unit {
+        this.results.add((callId, output))
+    }
+
+    // 一轮 step = 调用 + 结果（套件按配对计数，未回答的调用不算）
+    public func rounds(): Int64 {
+        var n: Int64 = 0
+        for ((cid, _) in this.results) {
+            for ((callId, _, _) in this.calls) {
+                if (callId == cid) {
+                    n = n + 1
+                    break
+                }
+            }
+        }
+        return n
+    }
+
+    public func toolCalls(): Array<(String, String, String)> {
+        return this.calls.toArray()
+    }
+
+    public func toolResults(): Array<(String, String)> {
+        return this.results.toArray()
+    }
+
+    public func ask(kind: String, prompt: String, options: Array<(String, String)>): String {
+        let id = this.ids.inputRequest()
+        this.pending.add(PendingInputRequest(id, "", kind, prompt, options))
+        return id
+    }
+
+    public func pendingRequests(): Array<PendingInputRequest> {
+        return this.pending.toArray()
+    }
 
     public func collectedText(): String {
         let out = StringBuilder()

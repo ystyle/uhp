@@ -39,6 +39,32 @@ class SutHarness <: HarnessDriver {
     }
 
     public func run(ctx: TurnContext, sink: TurnSink, cancel: CancelToken): TurnOutcome {
+        // 续跑（回答问题）：把答案回话。secret 永远不回显。
+        if (ctx.answers.size > 0) {
+            let answer = ctx.answers[0]
+            if (answer.startsWith("uhp-secret-")) {
+                sink.textDelta("RECEIVED")
+            } else {
+                sink.textDelta("ANSWERED " + answer)
+            }
+            return TurnOutcome.Completed(None)
+        }
+        // 提问场景：prompt 里点名了 ask_user 与 kind
+        if (ctx.input.contains("ask_user")) {
+            if (ctx.input.contains("kind \"secret\"")) {
+                let _ = sink.ask("secret", "The deploy token?", Array<(String, String)>())
+                return TurnOutcome.Completed(None)
+            }
+            if (ctx.input.contains("kind \"choice\"")) {
+                let _ = sink.ask("choice", "Which colour?",
+                    [("red", "Red"), ("blue", "Blue")])
+                return TurnOutcome.Completed(None)
+            }
+        }
+        // step 预算场景：链式调 uhp_steps，每轮一次；到预算就结束本轮为 incomplete
+        if (ctx.input.contains("uhp_steps")) {
+            return runStepChain(ctx, sink)
+        }
         // 插件场景：要求调用 MCP 工具并把返回值原样回话（P-11 的判据是 fixture 的答案）。
         // 这是 harness 侧行为：SDK 只把本轮可用的 MCP 服务器并集交给我们。
         if (ctx.input.contains("Call the tool ")) {
@@ -76,6 +102,61 @@ class SutHarness <: HarnessDriver {
         }
         return TurnOutcome.Completed(None)
     }
+}
+
+// 链式工具调用：每轮严格「调用 + 结果」成一对（套件按配对计 step），到预算立刻停。
+func runStepChain(ctx: TurnContext, sink: TurnSink): TurnOutcome {
+    let nonce = match (markerValue(ctx.input, "set to ")) {
+        case Some(v) => v
+        case None => ""
+    }
+    if (nonce.size == 0) {
+        return TurnOutcome.Completed(None)
+    }
+    var client: Option<McpClient> = None
+    for (server in ctx.mcpServers) {
+        match (httpUrlOf(server)) {
+            case Some(u) => client = Some(McpClient(u))
+            case None => ()
+        }
+        if (client.isSome()) {
+            break
+        }
+    }
+    let c = match (client) {
+        case Some(v) => v
+        case None => return TurnOutcome.Failed("harness_error", "no http MCP server")
+    }
+    let limit = match (ctx.maxStep) {
+        case Some(n) => n
+        case None => 100
+    }
+    var step: Int64 = 0
+    while (true) {
+        if (step >= limit) {
+            // 到预算：本轮以 incomplete 结束（服务端会把 reason 落成 max_steps）
+            return TurnOutcome.Incomplete(IncompleteReason.MaxSteps, None)
+        }
+        let argOut = ByteBuffer()
+        let aw = JsonWriter(argOut)
+        aw.startObject()
+        aw.writeName("nonce").writeValue(nonce)
+        aw.endObject()
+        aw.flush()
+        let args = String.fromUtf8(argOut.bytes())
+        let callId = sink.toolCall("uhp_steps", args)
+        let answer = match (c.callTool("uhp_steps", args)) {
+            case Some(v) => v
+            case None => "uhp_steps failed"
+        }
+        sink.toolResult(callId, answer)
+        step = step + 1
+        if (answer.contains("the chain is done")) {
+            sink.textDelta("DONE")
+            return TurnOutcome.Completed(None)
+        }
+    }
+    return TurnOutcome.Completed(None)
 }
 
 // 从 prompt 里认出工具名与参数，连上第一个 http MCP server 调一次，把答案回话。
