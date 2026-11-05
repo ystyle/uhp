@@ -12,6 +12,7 @@ import std.collection.HashMap
 import std.convert.*
 import std.env.*
 import stdx.net.http.*
+import std.fs.{File as FsFile}
 import std.io.*
 import stdx.encoding.json.stream.*
 import uhp.server.*
@@ -58,6 +59,27 @@ class SutHarness <: HarnessDriver {
             if (ctx.input.contains("kind \"choice\"")) {
                 let _ = sink.ask("choice", "Which colour?",
                     [("red", "Red"), ("blue", "Blue")])
+                return TurnOutcome.Completed(None)
+            }
+        }
+        // 环境场景（EN-07）：在 mount 下读文件，并真的试一次写（应当失败——只读）
+        if (let Some(mount) <- ctx.environmentMount) {
+            if (ctx.input.contains("cat ")) {
+                var content = ""
+                try {
+                    content = String.fromUtf8(FsFile.readFrom(mount + "/data/hello.txt"))
+                } catch (e: Exception) {
+                    content = "(unreadable)"
+                }
+                var writeNote = "write denied (read-only)"
+                try {
+                    let f = FsFile.create(mount + "/write-probe")
+                    f.close()
+                    writeNote = "write succeeded"
+                } catch (e: Exception) {
+                    writeNote = "write denied (read-only)"
+                }
+                sink.textDelta(content.trimAscii() + " WRITE: " + writeNote)
                 return TurnOutcome.Completed(None)
             }
         }

@@ -3,7 +3,7 @@
   "protocol_version": "2026-10-19",
   "suite_protocol_version": "2026-10-19",
   "suite_version": "2026.10.19.post5",
-  "generated_at": "2026-11-05T08:10:34Z",
+  "generated_at": "2026-11-05T08:16:00Z",
   "target": "http://127.0.0.1:8471",
   "target_label": "",
   "implementation": {
@@ -14,15 +14,7 @@
   "conformant": false,
   "conformant_with_skips": true,
   "skipped_not_verified": [
-    "EN-01",
-    "EN-02",
-    "EN-03",
-    "EN-04",
-    "EN-05",
-    "EN-06",
-    "EN-07",
     "EN-09",
-    "EN-08",
     "ME-01",
     "ME-02",
     "ME-03",
@@ -46,9 +38,9 @@
   },
   "highest_class_passed": "extended",
   "summary": {
-    "pass": 82,
+    "pass": 90,
     "fail": 0,
-    "skip": 22,
+    "skip": 14,
     "error": 0,
     "total": 104
   },
@@ -227,7 +219,7 @@
       "class": "core",
       "spec": "protocol/versions/2026-10-19/lifecycle.md#4-session-lifecycle",
       "outcome": "pass",
-      "detail": "session_id=hsess1730527685025843077715753349860465117768"
+      "detail": "session_id=hsess10880969190069245667241867828428126025"
     },
     {
       "id": "T-05",
@@ -339,7 +331,7 @@
       "class": "core",
       "spec": "protocol/versions/2026-10-19/sessions.md#1-continuing-a-session",
       "outcome": "pass",
-      "detail": "session hsess1730527685025843077715753349860465117768 extended"
+      "detail": "session hsess10880969190069245667241867828428126025 extended"
     },
     {
       "id": "C-02",
@@ -435,7 +427,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/harnesses.md#4-managing-harnesses",
       "outcome": "pass",
-      "detail": "created, updated and deleted chrn_1324504718139792685517613669496311875444"
+      "detail": "created, updated and deleted chrn_875773856900130357713052290449508713411"
     },
     {
       "id": "F-03",
@@ -515,7 +507,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/plugins.md#5-exporting-a-harness-as-a-plugin",
       "outcome": "pass",
-      "detail": "exported 5 files as 'uhp-conformance-d74906', reinstalled"
+      "detail": "exported 5 files as 'uhp-conformance-ec2adb', reinstalled"
     },
     {
       "id": "P-07",
@@ -571,7 +563,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/sessions.md#6-deleting",
       "outcome": "pass",
-      "detail": "deleted hsess502840091941474061218329201039627259350, now 404"
+      "detail": "deleted hsess120098211854743152951899362801353535745, now 404"
     },
     {
       "id": "F-09",
@@ -579,7 +571,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/harnesses.md#53-delete",
       "outcome": "pass",
-      "detail": "kept: hsess1753132950113812118611588040665179634875 still reads after its harness was deleted"
+      "detail": "kept: hsess24849012736831274052470515864750477075 still reads after its harness was deleted"
     },
     {
       "id": "F-10",
@@ -587,7 +579,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/harnesses.md#51-create",
       "outcome": "pass",
-      "detail": "chrn_76127657207094693355812016289009428539 returned for both attempts, a changed request refused with 409, made again after its delete"
+      "detail": "chrn_507279488124927044214421321267798827370 returned for both attempts, a changed request refused with 409, made again after its delete"
     },
     {
       "id": "F-02",
@@ -635,7 +627,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/tasks.md#32-asking-the-person",
       "outcome": "pass",
-      "detail": "asked inreq_560335723987289364114722191272313495992 (choice, 2 options); 422 outside the options, 409 for a stale id, answered once (completed), 409 again"
+      "detail": "asked inreq_138809628349825316143259725769234265588 (choice, 2 options); 422 outside the options, 409 for a stale id, answered once (completed), 409 again"
     },
     {
       "id": "T-14",
@@ -651,7 +643,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/sessions.md#5-session-sharing",
       "outcome": "pass",
-      "detail": "readable unauthenticated at /v1/shared/54243727763531605209501193429689919096"
+      "detail": "readable unauthenticated at /v1/shared/109683452683535610167452260667818281445"
     },
     {
       "id": "R-02",
@@ -691,7 +683,7 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/sessions.md#5-session-sharing",
       "outcome": "pass",
-      "detail": "revoked via DELETE /v1/sessions/hsess1730527685025843077715753349860465117768/share; 2 link(s) minted, all now 404/404"
+      "detail": "revoked via DELETE /v1/sessions/hsess10880969190069245667241867828428126025/share; 2 link(s) minted, all now 404/404"
     },
     {
       "id": "R-07",
@@ -714,56 +706,56 @@
       "title": "An environment is created with a fixed mount path and reads back",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/environments.md#2-the-environment-object",
-      "outcome": "skip",
-      "detail": "this server reports the environments capability false or absent, and the Environments chapter is optional at every class"
+      "outcome": "pass",
+      "detail": "henv_1309400848854936452712257683034745958528 at /home/ystyle/Projects/Cangjie/uhp-cj/.uhp-envs/uhp-conformance-bf24a8"
     },
     {
       "id": "EN-02",
       "title": "Files go in by path and come back byte for byte; escapes are refused",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/environments.md#3-files",
-      "outcome": "skip",
-      "detail": "this server reports the environments capability false or absent, and the Environments chapter is optional at every class"
+      "outcome": "pass",
+      "detail": "round trip, tree, escape refused, removal"
     },
     {
       "id": "EN-03",
       "title": "A build snapshots the source and becomes the active version",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/environments.md#4-builds-and-versions",
-      "outcome": "skip",
-      "detail": "this server reports the environments capability false or absent, and the Environments chapter is optional at every class"
+      "outcome": "pass",
+      "detail": "version 1 ready, 0 packages"
     },
     {
       "id": "EN-04",
       "title": "Editing the source changes nothing until the next build; rollback is a pointer",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/environments.md#4-builds-and-versions",
-      "outcome": "skip",
-      "detail": "this server reports the environments capability false or absent, and the Environments chapter is optional at every class"
+      "outcome": "pass",
+      "detail": "edit invisible, build 2 active, rollback to 1"
     },
     {
       "id": "EN-05",
       "title": "A harness names an environment; a task on an unbuilt one is refused before it starts",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/environments.md#5-attaching-an-environment",
-      "outcome": "skip",
-      "detail": "this server reports the environments capability false or absent, and the Environments chapter is optional at every class"
+      "outcome": "pass",
+      "detail": "harness reference reads back; unknown refused; unbuilt refused"
     },
     {
       "id": "EN-06",
       "title": "The environment's harness list names the harness that reads it",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/environments.md#5-attaching-an-environment",
-      "outcome": "skip",
-      "detail": "this server reports the environments capability false or absent, and the Environments chapter is optional at every class"
+      "outcome": "pass",
+      "detail": "2 harness(es) read it"
     },
     {
       "id": "EN-07",
       "title": "A task reads the environment at its mount path, read-only, and its session names it",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/environments.md#6-what-a-session-sees",
-      "outcome": "skip",
-      "detail": "this server reports the environments capability false or absent, and the Environments chapter is optional at every class"
+      "outcome": "pass",
+      "detail": "read /home/ystyle/Projects/Cangjie/uhp-cj/.uhp-envs/uhp-conformance-bf24a8/data/hello.txt; write refused; metadata.environment reported"
     },
     {
       "id": "EN-09",
@@ -771,15 +763,15 @@
       "class": "full",
       "spec": "protocol/versions/2026-10-19/environments.md#4-builds-and-versions",
       "outcome": "skip",
-      "detail": "this server reports the environments capability false or absent, and the Environments chapter is optional at every class"
+      "detail": "the server offers no package check (optional in Environments \u00a74)"
     },
     {
       "id": "EN-08",
       "title": "Configured environments are cleaned up",
       "class": "full",
       "spec": "protocol/versions/2026-10-19/environments.md#2-the-environment-object",
-      "outcome": "skip",
-      "detail": "no environments were created by earlier checks"
+      "outcome": "pass",
+      "detail": "2 removed"
     },
     {
       "id": "ME-01",

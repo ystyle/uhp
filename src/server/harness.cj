@@ -58,15 +58,21 @@ public class TurnContext {
     public let mcpServers: Array<String>
     // 本轮如果是「回答一个问题」的续跑，这里带人名下已答的答案（driver 不用自己去翻历史）
     public let answers: Array<String>
+    // 本轮所在环境（Environments §6）：id + 只读 mount 路径，driver 自己决定怎么用
+    public let environment: Option<String>
+    public let environmentMount: Option<String>
 
     public init(sessionId: String, input: String, model: String, maxStep!: Option<Int64> = None,
-                mcpServers!: Array<String> = [], answers!: Array<String> = []) {
+                mcpServers!: Array<String> = [], answers!: Array<String> = [],
+                environment!: Option<String> = None, environmentMount!: Option<String> = None) {
         this.sessionId = sessionId
         this.input = input
         this.model = model
         this.maxStep = maxStep
         this.mcpServers = mcpServers
         this.answers = answers
+        this.environment = environment
+        this.environmentMount = environmentMount
     }
 }
 

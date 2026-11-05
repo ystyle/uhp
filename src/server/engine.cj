@@ -6,6 +6,8 @@ package uhp.server
 
 import std.collection.{ArrayList, HashMap}
 import std.convert.*
+import std.env
+import std.fs.{Directory, canonicalize, exists, removeIfExists, File as FsFile}
 import std.sync.Mutex
 import std.time.DateTime
 import stdx.encoding.json.stream.*
@@ -95,11 +97,13 @@ public class TaskRequest {
     public let inputResponse: Option<(String, String)>
     // §1.1 的 step 预算：超过了必须 incomplete，且不许报 completed
     public let maxStep: Option<Int64>
+    // metadata.environment：本任务在哪个环境里跑（§5/§6）
+    public let environment: Option<String>
 
     public init(input: String, model!: Option<String> = None, harnessId!: Option<String> = None,
                 previousResponseId!: Option<String> = None, background!: Bool = false,
                 ignoredFields!: Array<String> = [], inputResponse!: Option<(String, String)> = None,
-                maxStep!: Option<Int64> = None) {
+                maxStep!: Option<Int64> = None, environment!: Option<String> = None) {
         this.input = input
         this.model = model
         this.harnessId = harnessId
@@ -108,6 +112,7 @@ public class TaskRequest {
         this.ignoredFields = ignoredFields
         this.inputResponse = inputResponse
         this.maxStep = maxStep
+        this.environment = environment
     }
 }
 
@@ -157,6 +162,9 @@ public class Engine {
     // 待回答的问题（按 input_request id）与每个响应收到的输入 items（客户端可读，secret 除外）
     private let inputRequests: HashMap<String, PendingInputRequest> = HashMap<String, PendingInputRequest>()
     private let inputItems: HashMap<String, String> = HashMap<String, String>()
+    // 环境（Environments 章）：每个环境一个真实目录（mount），build 后只读
+    private let envs: HashMap<String, EnvRecord> = HashMap<String, EnvRecord>()
+    private let envBase: String = envBaseDir()
     private let versions: Array<String>
     private let cls: ConformanceClass
     private let capabilitiesValue: Capabilities
@@ -206,6 +214,7 @@ public class Engine {
                 caps.plugins = true
                 caps.sessionSharing = true
                 caps.inputRequests = true
+                caps.environments = true
         }
         this.capabilitiesValue = caps
     }
@@ -354,6 +363,28 @@ public class Engine {
                     titleOf(req.input))
                 previous = None
         }
+        // 环境：显式 metadata.environment 优先，否则用 harness 配的那个
+        let envId: Option<String> = match (req.environment) {
+            case Some(e) => Some(e)
+            case None => match (this.harnessRecords.get(harness.id)) {
+                case Some(rec) => rec.environment
+                case None => None
+            }
+        }
+        let envMount: Option<String> = match (envId) {
+            case Some(eid) =>
+                let env = match (this.envs.get(eid)) {
+                    case Some(e) => e
+                    case None => throw EngineError("environment_not_found", UInt16(404), param: Some("metadata.environment"))
+                }
+                // 没 build 的环境不能拿来跑任务：必须在任务开始前拒绝（EN-05）
+                match (env.active) {
+                    case Some(_) => ()
+                    case None => throw EngineError("environment_not_ready", UInt16(409), param: Some("metadata.environment"))
+                }
+                Some(env.mount)
+            case None => None
+        }
         if (!session.tryBegin(responseId)) {
             throw EngineError("session_busy", UInt16(409))
         }
@@ -376,6 +407,15 @@ public class Engine {
             // 规范：服务端忽略请求字段时必须点名（tools/include 是保留字段）
             meta.ignored_fields = Some(req.ignoredFields)
         }
+        match (envId) {
+            case Some(eid) =>
+                meta.environment = Some(eid)
+                match (this.records.get(sessionId)) {
+                    case Some(rec) => rec.environment = Some(eid)
+                    case None => ()
+                }
+            case None => ()
+        }
         resp.metadata = Some(meta)
         match (previous) {
             case Some(prev) => resp.previous_response_id = Some("\"" + prev.id + "\"")
@@ -397,13 +437,14 @@ public class Engine {
         // 校验（harness/session/scope）已经在锁内完成，所以 4xx 能赶在响应头之前返回。
         let sink = EngineSink(channel, this.idSource)
         spawn {
-            this.executeTask(harness, req, sessionId, resp, channel, sink)
+            this.executeTask(harness, req, sessionId, resp, channel, sink, envId, envMount)
         }
         return TaskResult(resp, channel)
     }
 
     private func executeTask(harness: ConfiguredHarness, req: TaskRequest, sessionId: String,
-                             resp: Response, channel: EventChannel, sink: EngineSink): Unit {
+                             resp: Response, channel: EventChannel, sink: EngineSink,
+                             envId: Option<String>, envMount: Option<String>): Unit {
         let outcome = try {
             let mcpServers = match (this.harnessRecords.get(harness.id)) {
                 case Some(rec) => composedMcpServers(rec)
@@ -414,7 +455,8 @@ public class Engine {
                 case None => Array<String>()
             }
             harness.driver.run(TurnContext(sessionId, req.input, resp.model, maxStep: req.maxStep,
-                mcpServers: mcpServers, answers: answers), sink, CancelToken())
+                mcpServers: mcpServers, answers: answers, environment: envId,
+                environmentMount: envMount), sink, CancelToken())
         } catch (e: Exception) {
             // driver 抛异常 = failed(harness_error)，绝不允许吞成 completed
             TurnOutcome.Failed("harness_error", "harness failed")
@@ -673,6 +715,194 @@ public class Engine {
         }
     }
 
+    // ---------- 环境（Environments） ----------
+
+    public func createEnvironment(p: Principal, name: String, description: Option<String>,
+                                  entry: Option<String>): EnvRecord {
+        synchronized(this.lock) {
+            let id = "henv_" + this.idSource.session().replace("hsess", "")
+            var slug = envSlug(name)
+            if (slug.size == 0) {
+                slug = "env"
+            }
+            let mount = this.envBase + "/" + slug
+            let rec = EnvRecord(id, name, slug, description, entry, mount)
+            this.envs[id] = rec
+            return rec
+        }
+    }
+
+    public func getEnvironment(id: String): EnvRecord {
+        synchronized(this.lock) {
+            return match (this.envs.get(id)) {
+                case Some(e) => e
+                case None => throw EngineError("environment_not_found", UInt16(404))
+            }
+        }
+    }
+
+    public func listEnvironments(): Array<EnvRecord> {
+        synchronized(this.lock) {
+            let out = ArrayList<EnvRecord>()
+            for ((_, e) in this.envs) {
+                out.add(e)
+            }
+            return out.toArray()
+        }
+    }
+
+    public func deleteEnvironment(id: String): Unit {
+        synchronized(this.lock) {
+            let e = this.getEnvironment(id)
+            this.envs.remove(id)
+            try {
+                removeIfExists(e.mount, recursive: true)
+            } catch (ex: Exception) {
+                eprintln("uhp: environment dir removal failed: " + ex.toString())
+            }
+        }
+    }
+
+    public func putEnvFile(id: String, path: String, bytes: Array<UInt8>): Unit {
+        synchronized(this.lock) {
+            let e = this.getEnvironment(id)
+            checkEnvPath(path)
+            if (e.active.isSome()) {
+                setEnvWritable(e, true)
+            }
+            e.files[path] = bytes
+            // 真实落盘：driver 要像 agent 一样在 mount 下读
+            try {
+                let full = e.mount + "/" + path
+                let segs = path.split("/")
+                var dir = e.mount
+                if (!exists(dir)) {
+                    Directory.create(dir, recursive: true)
+                }
+                var i = 0
+                while (i < segs.size - 1) {
+                    dir = dir + "/" + segs[i]
+                    if (!exists(dir)) {
+                        Directory.create(dir, recursive: true)
+                    }
+                    i = i + 1
+                }
+                FsFile.writeTo(full, bytes)
+            } catch (ex: Exception) {
+                eprintln("uhp: environment file write failed: " + ex.toString())
+            }
+            if (e.active.isSome()) {
+                setEnvWritable(e, false)
+            }
+        }
+    }
+
+    public func getEnvFile(id: String, path: String): Array<UInt8> {
+        synchronized(this.lock) {
+            let e = this.getEnvironment(id)
+            checkEnvPath(path)
+            return match (e.files.get(path)) {
+                case Some(b) => b
+                case None => throw EngineError("not_found", UInt16(404))
+            }
+        }
+    }
+
+    // 删文件或整棵目录（套件会删 "probe" 这棵子树）
+    public func deleteEnvPath(id: String, path: String): Unit {
+        synchronized(this.lock) {
+            let e = this.getEnvironment(id)
+            checkEnvPath(path)
+            if (e.active.isSome()) {
+                setEnvWritable(e, true)
+            }
+            let gone = ArrayList<String>()
+            for ((p, _) in e.files) {
+                if (p == path || p.startsWith(path + "/")) {
+                    gone.add(p)
+                }
+            }
+            for (p in gone) {
+                e.files.remove(p)
+            }
+            try {
+                removeIfExists(e.mount + "/" + path, recursive: true)
+            } catch (ex: Exception) {
+                eprintln("uhp: environment delete failed: " + ex.toString())
+            }
+            if (e.active.isSome()) {
+                setEnvWritable(e, false)
+            }
+        }
+    }
+
+    public func buildEnvironment(id: String): Int64 {
+        synchronized(this.lock) {
+            let e = this.getEnvironment(id)
+            let version = e.latestVersion + 1
+            let b = EnvBuild(version)
+            // 快照：之后改源文件不影响已 build 的版本
+            let snap = HashMap<String, Array<UInt8>>()
+            var bytes: Int64 = 0
+            for ((path, content) in e.files) {
+                snap[path] = content
+                bytes = bytes + Int64(content.size)
+            }
+            b.files = Int64(e.files.size)
+            b.bytes = bytes
+            b.finishedAt = nowSeconds()
+            e.builds[version] = b
+            e.versions[version] = snap
+            e.latestVersion = version
+            e.active = Some(version)
+            e.status = "ready"
+            // build 把这一版真正铺到 mount 上（回滚时再换回来）
+            materializeEnv(e, snap)
+            return version
+        }
+    }
+
+    public func envBuild(id: String, version: Int64): EnvBuild {
+        synchronized(this.lock) {
+            let e = this.getEnvironment(id)
+            return match (e.builds.get(version)) {
+                case Some(b) => b
+                case None => throw EngineError("not_found", UInt16(404))
+            }
+        }
+    }
+
+    public func activateEnvVersion(id: String, version: Int64): Int64 {
+        synchronized(this.lock) {
+            let e = this.getEnvironment(id)
+            if (!e.builds.contains(version)) {
+                throw EngineError("environment_not_ready", UInt16(409))
+            }
+            e.active = Some(version)
+            match (e.versions.get(version)) {
+                case Some(files) => materializeEnv(e, files)
+                case None => ()
+            }
+            return version
+        }
+    }
+
+    // 哪些 harness 指向这个环境（EN-06）
+    public func envHarnesses(id: String): Array<String> {
+        synchronized(this.lock) {
+            let out = ArrayList<String>()
+            for ((hid, rec) in this.harnessRecords) {
+                match (rec.environment) {
+                    case Some(eid) => if (eid == id) {
+                        out.add(hid)
+                    }
+                    case None => ()
+                }
+            }
+            return out.toArray()
+        }
+    }
+
     // ---------- harness 管理（Full） ----------
 
     public func supportedBaseList(): Array<String> {
@@ -714,6 +944,13 @@ public class Engine {
             }
             rec.plugins = resolvePlugins(rec.pluginInputs, [])
             checkComposition(directServerNames(rec), directSkillNames(rec), rec.plugins)
+            match (rec.environment) {
+                case Some(eid) =>
+                    if (!this.envs.contains(eid)) {
+                        throw EngineError("environment_not_found", UInt16(404), param: Some("environment"))
+                    }
+                case None => ()
+            }
             this.harnessRecords[id] = rec
             this.harnesses[id] = ConfiguredHarness(id, rec.name, rec.base,
                 match (rec.defaultModel) { case Some(m) => m; case None => "scripted-model" },
@@ -756,6 +993,14 @@ public class Engine {
             // 「不带 files 的插件条目」= 沿用已装包（PUT 往返/禁用），所以要把旧集合传进去
             old.plugins = resolvePlugins(parsed.pluginInputs, old.plugins)
             checkComposition(directServerNames(old), directSkillNames(old), old.plugins)
+            match (parsed.environment) {
+                case Some(eid) =>
+                    if (!this.envs.contains(eid)) {
+                        throw EngineError("environment_not_found", UInt16(404), param: Some("environment"))
+                    }
+                    old.environment = Some(eid)
+                case None => old.environment = None
+            }
             match (this.harnesses.get(id)) {
                 case Some(h) =>
                     this.harnesses[id] = ConfiguredHarness(id, old.name, old.base,
@@ -1026,6 +1271,7 @@ public class Engine {
         s.id = rec.id
         s.objectKind = Some("session")
         s.harness_id = rec.harnessId
+        s.environment = rec.environment
         s.title = rec.title
         s.status = "completed"
         s.created_at = rec.createdAt
@@ -1201,6 +1447,23 @@ func titleOf(input: String): String {
     let head = String(runes[0..limit])
     // 标题是单行展示：把换行换成空格
     return head.replace("\n", " ")
+}
+
+// 环境目录：<cwd>/.uhp-envs（mount 必须是绝对路径；放在进程工作目录下，容器与 CI 都可写）
+func envBaseDir(): String {
+    return canonicalize(".").toString() + "/.uhp-envs"
+}
+
+// 环境内路径：不许绝对、不许 ..（URL 里百分号编码的 ..%2F 也含 ".."，一并拒）
+func checkEnvPath(path: String): Unit {
+    if (path.size == 0 || path.startsWith("/") || path.contains("..")) {
+        throw EngineError("environment_invalid", UInt16(400), param: Some("path"))
+    }
+    for (seg in path.split("/")) {
+        if (seg.size == 0 || seg == ".") {
+            throw EngineError("environment_invalid", UInt16(400), param: Some("path"))
+        }
+    }
 }
 
 func nowSeconds(): Int64 {

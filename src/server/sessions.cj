@@ -13,6 +13,7 @@ public class SessionRecord {
     public let owner: String
     public let containerId: String
     public var title: String
+    public var environment: Option<String> = None
     public let createdAt: Int64
     public var updatedAt: Int64
     // 该会话内的响应 id，按时间顺序 —— /turns 的数据来源（不是向 harness 要历史）

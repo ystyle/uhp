@@ -215,6 +215,120 @@ public class UhpHttpServer {
                 return
             }
         }
+        // ---------- 环境（Environments） ----------
+        if (path == "/v1/environments" && method == "GET") {
+            let out = ByteBuffer()
+            let w = JsonWriter(out)
+            w.startObject()
+            w.writeName("environments")
+            w.startArray()
+            for (e in this.engine.listEnvironments()) {
+                w.jsonValue(environmentJson(e))
+            }
+            w.endArray()
+            w.endObject()
+            w.flush()
+            this.writeJson(ctx, UInt16(200), String.fromUtf8(out.bytes()), version: Some(usedVersion))
+            return
+        }
+        if (path == "/v1/environments" && method == "POST") {
+            let body = readAllText(ctx.request.body)
+            let obj = parseJsonObject(body)
+            let name = obj.str("name") ?? ""
+            let desc = obj.str("description")
+            let entry = obj.str("entry")
+            let rec = this.engine.createEnvironment(principal, name, desc, entry)
+            this.writeJson(ctx, UInt16(200), environmentJson(rec), version: Some(usedVersion))
+            return
+        }
+        if (seg.size >= 3 && seg[0] == "v1" && seg[1] == "environments") {
+            let eid = seg[2]
+            if (seg.size == 3 && method == "GET") {
+                this.writeJson(ctx, UInt16(200), environmentJson(this.engine.getEnvironment(eid)),
+                    version: Some(usedVersion))
+                return
+            }
+            if (seg.size == 3 && method == "DELETE") {
+                this.engine.deleteEnvironment(eid)
+                this.writeJson(ctx, UInt16(200), envDeletedJson(eid), version: Some(usedVersion))
+                return
+            }
+            if (seg.size == 4 && seg[3] == "harnesses" && method == "GET") {
+                let out = ByteBuffer()
+                let w = JsonWriter(out)
+                w.startObject()
+                w.writeName("harnesses")
+                w.startArray()
+                for (hid in this.engine.envHarnesses(eid)) {
+                    let rec = this.engine.harnessRecord(hid)
+                    w.jsonValue(harnessJson(rec, rec.base))
+                }
+                w.endArray()
+                w.endObject()
+                w.flush()
+                this.writeJson(ctx, UInt16(200), String.fromUtf8(out.bytes()), version: Some(usedVersion))
+                return
+            }
+            if (seg.size >= 4 && seg[3] == "files") {
+                if (seg.size == 4 && method == "GET") {
+                    this.writeJson(ctx, UInt16(200), envFilesJson(this.engine.getEnvironment(eid)),
+                        version: Some(usedVersion))
+                    return
+                }
+                let rel = joinSegments(seg, 4)
+                if (method == "PUT") {
+                    let bytes = readAllBytes(ctx.request.body)
+                    this.engine.putEnvFile(eid, rel, bytes)
+                    this.writeJson(ctx, UInt16(200), envFileWrittenJson(rel, Int64(bytes.size)),
+                        version: Some(usedVersion))
+                    return
+                }
+                if (method == "GET") {
+                    let bytes = this.engine.getEnvFile(eid, rel)
+                    ctx.responseBuilder
+                        .status(UInt16(200))
+                        .header("content-type", "application/octet-stream")
+                        .header("x-content-type-options", "nosniff")
+                        .header("UHP-Version", usedVersion)
+                        .body(bytes)
+                    return
+                }
+                if (method == "DELETE") {
+                    this.engine.deleteEnvPath(eid, rel)
+                    this.writeJson(ctx, UInt16(200), envPathDeletedJson(rel), version: Some(usedVersion))
+                    return
+                }
+            }
+            if (seg.size == 4 && seg[3] == "build" && method == "POST") {
+                let v = this.engine.buildEnvironment(eid)
+                this.writeJson(ctx, UInt16(200), envVersionJson(v), version: Some(usedVersion))
+                return
+            }
+            if (seg.size == 5 && seg[3] == "builds" && method == "GET") {
+                let v = match (Int64.tryParse(seg[4])) {
+                    case Some(n) => n
+                    case None => 0
+                }
+                this.writeJson(ctx, UInt16(200), envBuildJson(this.engine.envBuild(eid, v)),
+                    version: Some(usedVersion))
+                return
+            }
+            if (seg.size == 4 && seg[3] == "versions" && method == "GET") {
+                this.writeJson(ctx, UInt16(200), envVersionsJson(this.engine.getEnvironment(eid)),
+                    version: Some(usedVersion))
+                return
+            }
+            if (seg.size == 6 && seg[3] == "versions" && seg[5] == "activate" && method == "POST") {
+                let v = match (Int64.tryParse(seg[4])) {
+                    case Some(n) => n
+                    case None => 0
+                }
+                let active = this.engine.activateEnvVersion(eid, v)
+                this.writeJson(ctx, UInt16(200), envVersionJson(active), version: Some(usedVersion))
+                return
+            }
+        }
+
         // ---------- Extended：会话列举 / 检查 / turns / 产物 ----------
         if (seg.size == 2 && seg[0] == "v1" && seg[1] == "sessions" && method == "GET") {
             let limit = queryInt(ctx, "limit", 20)
@@ -321,7 +435,7 @@ public class UhpHttpServer {
         let req = TaskRequest(parsed.input, model: parsed.model, harnessId: parsed.harnessId,
             previousResponseId: parsed.previousResponseId, background: parsed.background,
             ignoredFields: parsed.ignored.toArray(), inputResponse: parsed.inputResponse,
-            maxStep: parsed.maxStep)
+            maxStep: parsed.maxStep, environment: parsed.environment)
         if (parsed.stream) {
             // 流式：立刻建流，事件边产生边发（不能等任务跑完再一把刷，套件 S-09 会抓）
             let started = this.engine.startTask(principal, req)
@@ -462,6 +576,7 @@ public class ParsedTaskRequest {
     // 回答一个问题（§3.2）：input_response item 的 input_request_id + answer
     public var inputResponse: Option<(String, String)> = None
     public var maxStep: Option<Int64> = None
+    public var environment: Option<String> = None
 }
 
 func parseTaskRequest(body: String): ParsedTaskRequest {
@@ -492,7 +607,7 @@ func parseTaskRequest(body: String): ParsedTaskRequest {
                 out.ignored.add("include")
             case "previous_response_id" => out.previousResponseId = Some(r.readValue<String>())
             case "max_step" => out.maxStep = Some(r.readValue<Int64>())
-            case "metadata" => out.harnessId = readHarnessId(r)
+            case "metadata" => readTaskMetadata(r, out)
             case _ => r.skip()
         }
     }
@@ -600,6 +715,25 @@ func readPartText(r: JsonReader): String {
     return text
 }
 
+func readTaskMetadata(r: JsonReader, out: ParsedTaskRequest): Unit {
+    r.startObject()
+    while (true) {
+        let name = match (r.peek()) {
+            case Some(JsonToken.EndObject) => break
+            case Some(JsonToken.Name) => r.readName()
+            case _ =>
+                r.skip()
+                continue
+        }
+        match (name) {
+            case "harness_id" => out.harnessId = Some(r.readValue<String>())
+            case "environment" => out.environment = Some(r.readValue<String>())
+            case _ => r.skip()
+        }
+    }
+    r.endObject()
+}
+
 func readHarnessId(r: JsonReader): Option<String> {
     var hid: Option<String> = None
     r.startObject()
@@ -621,6 +755,17 @@ func readHarnessId(r: JsonReader): Option<String> {
 }
 
 // ---------- 杂项 ----------
+
+// 把 URL 分段重新接成子路径（环境文件路径可能多层）
+func joinSegments(seg: Array<String>, from: Int64): String {
+    var out = ""
+    var i = from
+    while (i < seg.size) {
+        out = if (out.size == 0) { seg[i] } else { out + "/" + seg[i] }
+        i = i + 1
+    }
+    return out
+}
 
 func splitPath(path: String): Array<String> {
     let out = ArrayList<String>()

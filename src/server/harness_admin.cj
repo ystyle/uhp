@@ -27,6 +27,8 @@ public class HarnessRecord {
     public var disabledTools: Array<String> = []
     // 插件：包原样保存，派生态每次读时重算
     public var plugins: Array<PluginRecord> = []
+    // 指向的环境 id（Environments §5）：创建时必须是存在的环境
+    public var environment: Option<String> = None
     // 写体里的插件输入（create/update 时由 engine 解析成 PluginRecord）
     public var pluginInputs: Array<PluginInput> = []
     public var maxStep: Option<Int64> = None
@@ -70,6 +72,7 @@ public func parseHarnessCreate(r: JsonReader, id: String): HarnessRecord {
             case "mcp_servers" => rec.mcpServersJson = Some(String.fromUtf8(r.readValueBytes()))
             case "skills" => rec.skills = parseSkills(r)
             case "disabled_tools" => rec.disabledTools = r.readValue<Array<String>>()
+            case "environment" => rec.environment = Some(r.readValue<String>())
             case "plugins" => rec.pluginInputs = parsePluginInputs(r)
             case "max_step" => rec.maxStep = Some(r.readValue<Int64>())
             case "timeout_seconds" => rec.timeoutSeconds = Some(r.readValue<Int64>())
@@ -184,6 +187,11 @@ public func harnessJson(rec: HarnessRecord, baseLabel: String): String {
     w.endArray()
     w.writeName("plugins")
     w.jsonValue(pluginsJson(rec.plugins))
+    // schema 里 environment 是 string：没有就不写（写 null 会违反类型）
+    match (rec.environment) {
+        case Some(eid) => w.writeName("environment").writeValue(eid)
+        case None => ()
+    }
     match (rec.maxStep) {
         case Some(v) => w.writeName("maxStep").writeValue(v)
         case None => w.writeName("maxStep").writeNullValue()

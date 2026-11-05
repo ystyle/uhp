@@ -16,3 +16,6 @@ __pycache__/
 .vscode/
 .idea/
 .DS_Store
+
+# 环境章的真实挂载目录（运行时生成，不进仓库）
+/.uhp-envs/
