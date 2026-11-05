@@ -209,7 +209,7 @@ public func parseJson<T>(body: String): T where T <: JsonDeserializable<T> {
 // 幂等键：客户端生成、跨重试复用。不需要密码学强度（服务端按 principal 作用域去重）。
 public func newIdempotencyKey(): String {
     let rnd = Random()
-    return "uhp-" + rnd.nextUInt64().toString(radix: 16) + "-" + rnd.nextUInt64().toString(radix: 16)
+    return "uhp-" + rnd.nextUInt64().toString() + "-" + rnd.nextUInt64().toString()
 }
 
 // 把对象序列化成 JSON 文本（请求体）。
