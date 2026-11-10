@@ -171,7 +171,9 @@ func acp_permission_becomes_input_request(): Unit {
         permissionTimeoutSeconds: 60)
     let driver = AcpDriver(opts)
     let sink1 = RecordingSink()
+    dbg("[dbg] perm: run1 start")
     let first = driver.run(TurnContext("uhp-acp-perm", "perm please", "m"), sink1, CancelToken())
+    dbg("[dbg] perm: run1 done")
     var incomplete = false
     match (first) {
         case TurnOutcome.Incomplete(reason, _) =>
@@ -187,7 +189,9 @@ func acp_permission_becomes_input_request(): Unit {
     @Expect(ask1[2].size, 2)
     // 续跑：答案回到挂起的权限请求，Agent 继续，本轮完成
     let sink2 = RecordingSink()
+    dbg("[dbg] perm: run2 start")
     let second = driver.run(TurnContext("uhp-acp-perm", "", "m", answers: ["once"]), sink2, CancelToken())
+    dbg("[dbg] perm: run2 done")
     var completed = false
     match (second) {
         case TurnOutcome.Completed(_) => completed = true

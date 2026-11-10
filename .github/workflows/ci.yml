@@ -43,6 +43,10 @@ jobs:
           CANGJIE_STDX_PATH: ${{ env.CANGJIE_STDX_PATH_STATIC }}/stdx
         working-directory: uhp-acp
         run: timeout 600 cjpm test -j 4
+      # 诊断用：定位 ACP 测试在 runner 上的卡点（PR 关闭前删除）
+      - name: 调试日志
+        if: always()
+        run: cat /tmp/acp-dbg.log 2>/dev/null || echo "no dbg log"
 
   artifact-check:
     name: 制品自包含检查

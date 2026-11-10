@@ -18,6 +18,7 @@
 package uhp_acp
 
 import std.collection.{ArrayList, HashMap}
+import std.fs.{File as FsFile}
 import std.convert.*
 import std.sync.{AtomicBool, Mutex}
 import std.time.DateTime
@@ -30,6 +31,16 @@ import acp.transport.*
 import ystyle::jsonrpc.Result
 import uhp.server.*
 import uhp.types.generated.*
+
+// 调试埋点（仅诊断用，定位 CI 上的卡点）：把进度追加到 /tmp/acp-dbg.log。
+// 测试框架会吞掉测试用例里的 stderr，所以走文件；诊断完删掉。
+public func dbg(msg: String): Unit {
+    try {
+        FsFile.appendTo("/tmp/acp-dbg.log", (msg + "\n").toArray())
+    } catch (e: Exception) {
+        ()
+    }
+}
 
 public class AcpOptions {
     public let command: String
@@ -128,14 +139,17 @@ public class AcpDriver <: HarnessDriver {
     }
 
     private func runInner(ctx: TurnContext, sink: TurnSink, cancel: CancelToken): TurnOutcome {
+        dbg("[dbg] runInner enter sid=" + ctx.sessionId + " answers=" + ctx.answers.size.toString())
         let client = match (this.ensureClient()) {
             case Some(c) => c
             case None => return TurnOutcome.Failed("harness_error", "ACP agent not available")
         }
+        dbg("[dbg] client ok")
         let acpSession = match (this.ensureSession(client, ctx.sessionId)) {
             case Some(s) => s
             case None => return TurnOutcome.Failed("harness_error", "ACP session/new failed")
         }
+        dbg("[dbg] session ok acp=" + acpSession)
         let state = this.turnState(ctx.sessionId, acpSession)
         if (ctx.answers.size > 0) {
             let st = state
@@ -150,6 +164,7 @@ public class AcpDriver <: HarnessDriver {
         let resumeOnly = synchronized(this.lock) {
             state.inFlight
         }
+        dbg("[dbg] resumeOnly=" + resumeOnly.toString() + " permPending=" + state.permPending.toString() + " permAsked=" + state.permAsked.toString() + " promptDone=" + state.promptDone.toString())
         synchronized(this.lock) {
             state.sink = Some(sink)
             this.currentSink = Some(sink)
@@ -182,11 +197,14 @@ public class AcpDriver <: HarnessDriver {
             }
         }
         let deadline = nowMillis() + this.opts.timeoutSeconds * 1000
+        var dbgTick = 0
         while (nowMillis() < deadline) {
+            dbgTick = dbgTick + 1
             let (done, reason, err) = synchronized(this.lock) {
                 (state.promptDone, state.stopReason, state.promptError)
             }
             if (done) {
+                dbg("[dbg] done reason=" + reason + " err=" + err.isSome().toString())
                 synchronized(this.lock) {
                     state.sink = None
                     this.currentSink = None
@@ -208,6 +226,7 @@ public class AcpDriver <: HarnessDriver {
                     state.permOptions
                 }
                 let _ = sink.ask("choice", title, options)
+                dbg("[dbg] ask permission -> incomplete")
                 synchronized(this.lock) {
                     state.permAsked = true
                     state.sink = None
@@ -239,6 +258,12 @@ public class AcpDriver <: HarnessDriver {
             if (cancel.isCancelled()) {
                 client.cancel(acpSession)
             }
+            if (dbgTick % 100 == 0) {
+                let spin = synchronized(this.lock) {
+                    (state.permPending, state.permAnswer.isSome(), state.permAsked)
+                }
+                dbg("[dbg] poll tick=" + dbgTick.toString() + " permPending=" + spin[0].toString() + " answer=" + spin[1].toString() + " asked=" + spin[2].toString())
+            }
             sleep(Duration.millisecond * 10)
         }
         return TurnOutcome.Failed("harness_error", "ACP timeout")
@@ -262,8 +287,10 @@ public class AcpDriver <: HarnessDriver {
             let elicitCaps = ElicitationCapabilities()
             elicitCaps.form = Some(EmptyCapability())
             caps.elicitation = Some(elicitCaps)
+            dbg("[dbg] connect start")
             match (c.connect(info, caps)) {
                 case Result.Ok(_) =>
+                    dbg("[dbg] connect ok")
                     this.client = Some(c)
                     return Some(c)
                 case Result.Err(msg) =>
@@ -449,6 +476,7 @@ public class AcpDriver <: HarnessDriver {
     }
 
     private func onPermission(req: RequestPermissionRequest): RequestPermissionResponse {
+        dbg("[dbg] onPermission enter sid=" + req.sessionId)
         let st = match (this.stateByAcpSession(req.sessionId)) {
             case Some(s) => s
             case None => return RequestPermissionResponse(RequestPermissionOutcome.cancelled())
@@ -479,6 +507,7 @@ public class AcpDriver <: HarnessDriver {
             }
             match (ans) {
                 case Some(a) =>
+                    dbg("[dbg] onPermission got answer=" + a)
                     synchronized(this.lock) {
                         st.permPending = false
                         st.permAnswer = None
@@ -489,6 +518,7 @@ public class AcpDriver <: HarnessDriver {
             }
             sleep(Duration.millisecond * 10)
         }
+        dbg("[dbg] onPermission timeout")
         synchronized(this.lock) {
             st.permPending = false
             st.permAsked = false
