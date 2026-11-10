@@ -9,6 +9,7 @@ jobs:
   build-test:
     name: 构建 · 全部成员测试
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -23,14 +24,30 @@ jobs:
           CANGJIE_STDX_PATH: ${{ env.CANGJIE_STDX_PATH_STATIC }}/stdx
         run: cjpm build -j 8
 
-      - name: Tests（workspace 要起子进程，按仓内约定 -j 4）
+      # 三个成员分开跑：哪个成员卡住/失败一眼可见，也避免一个卡死拖住其它。
+      # 每个都套 timeout，卡死时以失败结束而不是耗到 job 超时。
+      - name: Tests · uhp（SDK）
         env:
           CANGJIE_STDX_PATH: ${{ env.CANGJIE_STDX_PATH_STATIC }}/stdx
-        run: cjpm test -j 4 --no-progress
+        working-directory: uhp
+        run: timeout 900 cjpm test -j 4 --no-progress
+
+      - name: Tests · uhp-opencode
+        env:
+          CANGJIE_STDX_PATH: ${{ env.CANGJIE_STDX_PATH_STATIC }}/stdx
+        working-directory: uhp-opencode
+        run: timeout 600 cjpm test -j 4 --no-progress
+
+      - name: Tests · uhp-acp
+        env:
+          CANGJIE_STDX_PATH: ${{ env.CANGJIE_STDX_PATH_STATIC }}/stdx
+        working-directory: uhp-acp
+        run: timeout 600 cjpm test -j 4 --no-progress
 
   artifact-check:
     name: 制品自包含检查
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -46,7 +63,7 @@ jobs:
         run: |
           set -e
           for m in uhp uhp-opencode uhp-acp; do
-            (cd "$m" && cjpm bundle --skip-lint --skip-test)
+            (cd "$m" && timeout 300 cjpm bundle --skip-lint --skip-test)
           done
 
       - name: 解包后独立构建（证明制品自包含）
@@ -59,7 +76,7 @@ jobs:
             d=$(mktemp -d)
             tar xzf "$f" -C "$d"
             root=$(ls -d "$d"/*)
-            (cd "$root" && cjpm build -j 8)
+            (cd "$root" && timeout 300 cjpm build -j 8)
             echo "OK: $m -> $(basename "$root")"
             rm -rf "$d"
           done
