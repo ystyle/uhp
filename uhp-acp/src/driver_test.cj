@@ -172,6 +172,15 @@ func acp_permission_becomes_input_request(): Unit {
     let driver = AcpDriver(opts)
     let sink1 = RecordingSink()
     dbg("[dbg] perm: run1 start")
+    // 诊断用：独立心跳线程，判断卡住时是整个进程/文件写入停了，还是只有特定线程停了
+    spawn {
+        var hb = 0
+        while (hb < 300) {
+            sleep(Duration.millisecond * 500)
+            hb = hb + 1
+            dbg("[dbg] hb " + hb.toString())
+        }
+    }
     let first = driver.run(TurnContext("uhp-acp-perm", "perm please", "m"), sink1, CancelToken())
     dbg("[dbg] perm: run1 done")
     var incomplete = false

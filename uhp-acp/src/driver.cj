@@ -36,7 +36,7 @@ import uhp.types.generated.*
 // 测试框架会吞掉测试用例里的 stderr，所以走文件；诊断完删掉。
 public func dbg(msg: String): Unit {
     try {
-        FsFile.appendTo("/tmp/acp-dbg.log", (msg + "\n").toArray())
+        FsFile.appendTo("/tmp/acp-dbg.log", ("[" + nowMillis().toString() + "] " + msg + "\n").toArray())
     } catch (e: Exception) {
         ()
     }
@@ -319,11 +319,12 @@ public class AcpDriver <: HarnessDriver {
             caps.elicitation = Some(elicitCaps)
             dbg("[dbg] connect start")
             spawn {
+                dbg("[dbg] watchdog started")
                 var w = 0
-                while (w < 40) {
-                    sleep(Duration.second * 2)
+                while (w < 60) {
+                    sleep(Duration.second)
                     w = w + 1
-                    dbg("[dbg] watchdog t=" + (w * 2).toString() + "s connected=" + c.isConnected().toString())
+                    dbg("[dbg] watchdog t=" + w.toString() + "s connected=" + c.isConnected().toString())
                 }
             }
             match (c.connect(info, caps)) {

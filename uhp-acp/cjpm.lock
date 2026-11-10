@@ -3,7 +3,7 @@ version = 0
 [requires]
   jsonvalue = {version = "1.1.1"}
   sonyflake = {version = "1.0.9"}
-  uhp = {version = "0.1.0"}
+  acp = {version = "0.2.7"}
   gjson = {version = "1.2.2"}
   "ystyle::jsonrpc" = {version = "0.7.9"}
-  acp = {version = "0.2.7"}
+  uhp = {version = "0.1.0"}

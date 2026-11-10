@@ -42,7 +42,7 @@ jobs:
         env:
           CANGJIE_STDX_PATH: ${{ env.CANGJIE_STDX_PATH_STATIC }}/stdx
         working-directory: uhp-acp
-        run: timeout 240 cjpm test -j 4
+        run: timeout 150 cjpm test -j 4
 
       # 诊断用：单独跑权限用例，判断是「累积状态」还是「该用例必然卡」（PR 关闭前删除）
       - name: 单独跑权限用例
