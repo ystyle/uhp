@@ -20,8 +20,10 @@ let driver = AcpDriver(AcpOptions("opencode", args: ["acp"], cwd: "/path/to/work
 ```
 
 ```bash
-bash scripts/test.sh          # 9 条测试（真 ACP 协议 + 假 agent）
-bash scripts/real-smoke.sh    # 真实链路冒烟（默认 opencode acp）
+bash scripts/test.sh                     # 14 条测试（真 ACP 协议 + 假 agent）
+bash scripts/real-smoke.sh              # 真实链路冒烟（默认 opencode acp）
+bash scripts/real-smoke-parallel.sh     # 并发会话冒烟（opencode acp，Parallel 模式）
+python3 scripts/acp-capability-probe.py # 探针：查某个 ACP agent 的多会话/并发/close 能力
 ```
 
 ## 文档

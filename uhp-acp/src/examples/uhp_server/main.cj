@@ -4,11 +4,14 @@
 //   uhp_acp.examples.uhp_server <port> <cwd> <agentCommand> [agentArgs...]
 // 例：
 //   ./target/release/bin/uhp_acp.examples.uhp_server 8471 /tmp "opencode" acp
+//
+// 环境变量 UHP_ACP_SESSION_MODE=parallel 打开「一个连接多会话并发」；
+// 默认 serial（任何 ACP agent 都能用），并发只对确认支持的 agent 开。
 package uhp_acp.examples.uhp_server
 
 import std.collection.{ArrayList, HashMap}
 import std.convert.*
-import std.env.getCommandLine
+import std.env.{getCommandLine, getVariable}
 import stdx.net.http.*
 import uhp.server.*
 import uhp_acp.*
@@ -31,7 +34,12 @@ main(): Int64 {
         agentArgs.add(args[i])
         i = i + 1
     }
-    let opts = AcpOptions(command, args: agentArgs.toArray(), cwd: cwd, label: "ACP agent")
+    let mode = match (getVariable("UHP_ACP_SESSION_MODE")) {
+        case Some(v) => if (v == "parallel") { AcpSessionMode.Parallel } else { AcpSessionMode.Serial }
+        case None => AcpSessionMode.Serial
+    }
+    let opts = AcpOptions(command, args: agentArgs.toArray(), cwd: cwd, label: "ACP agent",
+        sessionMode: mode)
     let driver = AcpDriver(opts)
     let harness = ConfiguredHarness("chrn_acp", "ACP agent", "acp", "acp-agent", driver)
     let engine = Engine([harness])

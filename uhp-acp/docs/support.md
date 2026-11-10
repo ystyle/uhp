@@ -36,14 +36,18 @@
 选型判据：**默认 `process-per-worker` + `Serial`**，遇到已验证的 agent 再切 `shared` + `Parallel`。
 不要因为「ACP 有多会话」就假定它能并发。
 
-## 3. 各 harness 实测情况
+## 3. 各 harness 实测情况（2026-11-11）
 
-| harness | 多会话（单连接） | 回合并发 | `session/close` | 实测状态 |
-|---|---|---|---|---|
-| DSH（`dsh --profile acp`） | ✅ | ✅（官方文档明确「一个连接可以同时运行多个会话，彼此独立」） | ✅ | 文档确认；端到端待接入 starline 后实测 |
-| pi | 待实测 | 待实测 | 待实测 | 未测 |
-| opencode（`opencode acp`） | 待实测 | 待实测 | 待实测 | 未测 |
-| claude-code（ACP 桥） | 待实测 | 待实测 | 待实测 | 未测 |
+| harness | 多会话（单连接） | 回合并发 | `session/close` | `session/list` | 结论 |
+|---|---|---|---|---|---|
+| **opencode**（`opencode acp`） | ✅ 实测 | ✅ 实测（两任务 0.87s 交错、总耗时 4.6s，非串行） | ✅ 实测（返回 `{}`） | ✅ 实测 | 可用 `shared` + `Parallel` |
+| DSH（`dsh --profile acp`） | ✅ 文档 | ✅ 文档明确「一个连接可以同时运行多个会话，彼此独立」 | ✅ 文档 | ✅ 文档 | 端到端待接入 starline 后实测 |
+| pi（1.5.2） | ❌ 无原生 ACP | ❌ | ❌ | ❌ | 只有 `--mode rpc`（自有 JSONL 协议，非 ACP）；要用 pi 得写 `uhp-pi` 适配器或找 ACP 扩展 |
+| claude-code（ACP 桥） | 待实测 | 待实测 | 待实测 | 待实测 | 未测 |
+
+opencode 的实测办法：`python3 scripts/acp-capability-probe.py <opencode> acp --cwd <workspace> --env XDG_CONFIG_HOME=...`。
+它打印 initialize 能力、两个会话的并发 prompt 时间线、`session/list`/`session/close` 结果。
+opencode 声明了 `sessionCapabilities: {list, close, delete, fork, resume, additionalDirectories}` 与 `loadSession: true`。
 
 > 未实测的行按最保守假设处理：`Serial` + `process-per-worker`。测出来支持并发再改这张表。
 
@@ -51,7 +55,7 @@
 
 会话是内存随规模增长的主要来源，回收分两级：
 
-1. **会话级**：`closeSession(uhpSession)` → ACP `session/close`，让 agent 释放该会话的 agent 作用域；
+1. **会话级**：`closeSession(uhpSession)` → ACP `session/close`，让 agent 释放该会话的作用域；
    本地映射（会话、回合状态、callId 表、sink）一起摘掉，同 id 下次 `run()` 会重建会话。
    只在该会话回合已结束后调用。
 2. **进程级**：`close()` → 关传输 → 终止并回收 agent 子进程（幂等；关闭后可重连）。
