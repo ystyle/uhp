@@ -11,7 +11,7 @@ UHP 是 **HTTP/1.1 + JSON(REST) + SSE** 的协议，不是 JSON-RPC。本仓交�
 > SDK 负责「说得对、答得对」，不负责「干得好」。agent 循环、模型调用、工具执行属于消费方。
 
 这条边界决定：不要在本成员里塞容器编排、模型 SDK、真实 base 适配器；它们通过 `HarnessDriver` 接缝接入。
-真实适配器是**同级 workspace 成员**（`uhp-opencode/`、`uhp-acp/`），不发布、不进 SDK 制品。
+真实适配器是**同级 workspace 成员**（`uhp-opencode/`、`uhp-acp/`），各自作为可安装包发中心仓，不进 SDK 制品。
 
 ## 2. 工具链与命令
 
@@ -101,8 +101,8 @@ codec  <-  base  <-  generated  <-  handwritten
 
 ## 8. 发版
 
-- 发布范围由 monorepo 的 `workspace.toml` 决定：**只有本成员（uhp）发中心仓**，两个适配器成员在 exclude 里。
-  实际执行：根目录 `bash uhp/scripts/bundle-and-publish.sh`（或 `./scripts/workspace-release.sh publish uhp --exclude uhp_acp,uhp_opencode` 预演到私有仓；中心仓手工 `cd uhp && cjpm bundle --skip-lint && cjpm publish`）。
+- 发布范围由 monorepo 的 `workspace.toml` 决定：**三个成员都发中心仓**（`uhp` / `uhp_opencode` / `uhp_acp`），版本 lockstep。
+  实际执行：工作区根 `./scripts/workspace-release.sh publish uhp --exclude uhp_acp,uhp_opencode` 只预演 SDK 到私有仓——三成员统一发版时**不带 `--exclude`**（先 SDK 后适配器）；中心仓手工 `cd <member> && cjpm bundle --skip-lint && cjpm publish`。
 - 遵循工作区 [docs/publish-scope.md](../../docs/publish-scope.md)：**新包默认不发中心仓**，要发必须显式决策并更新该文件。
 - 发版前闸门：`bash scripts/test.sh` 绿 + `python3 tools/gen_types.py --check` 绿 +
   `python3 tools/check_schema_sync.py` 绿 + `LICENSE` 文件补齐 + 制品解包核对。

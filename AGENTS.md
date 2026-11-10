@@ -7,9 +7,9 @@
 
 ```text
 uhp/                    产品根（本文件、cjpm.toml workspace、workspace.toml）
-├── uhp/                SDK 成员：协议面 + 服务端骨架 + HarnessDriver SPI（唯一发布成员）
-├── uhp-opencode/       opencode 2.x 适配器（参考实现，不发布）
-├── uhp-acp/            ACP 通用适配器（参考实现，不发布）
+├── uhp/                SDK 成员：协议面 + 服务端骨架 + HarnessDriver SPI
+├── uhp-opencode/       opencode 2.x 适配器（可安装的发布成员）
+├── uhp-acp/            ACP 通用适配器（可安装的发布成员）
 ├── scripts/            产品级命令（build / test）
 └── target/             构建产物（workspace 统一输出）
 ```
@@ -34,7 +34,7 @@ bash scripts/test.sh           # cjpm build + cjpm test -j 4（全部成员）
 
 - **SDK 夹带消费方代码是反向依赖**：不要往 `uhp/src` 里加任何 specific agent 的适配逻辑。
   真实适配器只放在 `uhp-opencode/`、`uhp-acp/` 这类成员里，通过 `HarnessDriver` 接缝接入。
-- 新增适配器 = 新增一个 workspace 成员 + 在 `workspace.toml` 的 [workspace.publish] 里排除它。
+- 新增适配器 = 新增一个 workspace 成员；发布与否是**显式决策**：默认与其它成员一起发布（列进 `workspace.toml` 的 [workspace.publish]），本仓要放弃发布时必须写明理由并在这里记一条。
 - 适配器可以依赖第三方协议库（如 acp），但 SDK **不许**依赖它们。
 
 ## 4. 测试与真实链路
@@ -51,5 +51,7 @@ bash scripts/test.sh           # cjpm build + cjpm test -j 4（全部成员）
 ## 6. 发版
 
 - 产品版本在 workspace.toml（[workspace.package] version）；**三个成员统一发布**，版本由 [workspace.package] 统一推进。
-- 走工作区闸门：`./scripts/workspace-release.sh check uhp --exclude uhp_acp,uhp_opencode`（dry-run 预演）→ 私有仓预演 → 中心仓（脚本只认预演仓；中心仓按 cangjie-publish skill 手工发）。
+- 三个成员都是中心仓可安装包（`uhp` / `uhp_opencode` / `uhp_acp`），版本与 `uhp` 同步推进，不存在「只发 SDK」的单独发版。
+- 走工作区闸门：`./scripts/workspace-release.sh check uhp`（dry-run 预演）→ 私有仓预演 → 中心仓（脚本只认预演仓；中心仓按 cangjie-publish skill 手工发）。
+- 适配器依赖在中心仓必须按版本解析：`uhp_acp` 依赖 `uhp` + `acp` + `ystyle::jsonrpc`，`uhp_opencode` 依赖 `uhp`，发布顺序 SDK 先、适配器后（索引同步后）。
 - 发版前必须：bash scripts/test.sh 绿 + 三档一致性报告刷新 + 制品解包核对（见工作区 docs/publish-scope.md）。
