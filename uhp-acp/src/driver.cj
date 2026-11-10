@@ -28,7 +28,7 @@ import stdx.encoding.json.stream.*
 import acp.*
 import acp.types.*
 import acp.transport.*
-import ystyle::jsonrpc.Result
+import ystyle::jsonrpc.{Result, Transport}
 import uhp.server.*
 import uhp.types.generated.*
 
@@ -39,6 +39,35 @@ public func dbg(msg: String): Unit {
         FsFile.appendTo("/tmp/acp-dbg.log", (msg + "\n").toArray())
     } catch (e: Exception) {
         ()
+    }
+}
+
+// 诊断用：包一层传输，记录 send/receive 的进度（PR 关闭前删除）
+class DbgTransport <: Transport {
+    private let inner: Transport
+    public init(inner: Transport) {
+        this.inner = inner
+    }
+    public func send(data: Array<Byte>): Unit {
+        dbg("[dbg] transport send " + data.size.toString())
+        this.inner.send(data)
+        dbg("[dbg] transport send ok")
+    }
+    public func receive(): ?Array<Byte> {
+        let r = this.inner.receive()
+        match (r) {
+            case Some(d) => dbg("[dbg] transport recv " + d.size.toString())
+            case None => dbg("[dbg] transport recv none")
+        }
+        r
+    }
+    public func isClosed(): Bool {
+        this.inner.isClosed()
+    }
+    public func close(): Unit {
+        dbg("[dbg] transport close")
+        this.inner.close()
+        dbg("[dbg] transport closed")
     }
 }
 
@@ -275,8 +304,9 @@ public class AcpDriver <: HarnessDriver {
                 case Some(c) => return Some(c)
                 case None => ()
             }
-            let transport = SubprocessTransport(this.opts.command, args: this.opts.args)
+            let transport = DbgTransport(SubprocessTransport(this.opts.command, args: this.opts.args))
             let c = AcpClient(transport)
+            dbg("[dbg] client constructed")
             c.setOnSessionUpdate({ sid, update => this.onUpdate(sid, update) })
             c.setOnRequestPermission({ req => this.onPermission(req) })
             c.setOnElicitationCreate({ req => this.onElicitation(req) })
@@ -288,6 +318,14 @@ public class AcpDriver <: HarnessDriver {
             elicitCaps.form = Some(EmptyCapability())
             caps.elicitation = Some(elicitCaps)
             dbg("[dbg] connect start")
+            spawn {
+                var w = 0
+                while (w < 40) {
+                    sleep(Duration.second * 2)
+                    w = w + 1
+                    dbg("[dbg] watchdog t=" + (w * 2).toString() + "s connected=" + c.isConnected().toString())
+                }
+            }
             match (c.connect(info, caps)) {
                 case Result.Ok(_) =>
                     dbg("[dbg] connect ok")
