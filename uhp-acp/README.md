@@ -6,8 +6,9 @@ ACP（Agent Client Protocol）的 UHP `HarnessDriver` 适配器：把 ACP 的 se
 
 - 文本 / 推理流式输出；工具调用与结果；三个终态映射
 - 权限请求（`request_permission`）与表单提问（`elicitation/create`）→ UHP 两轮问答
-- 取消 → `session/cancel`
+- 取消 → `session/cancel`；会话级回收 `closeSession()`（agent 支持 `session/close` 时）
 - 输入文件 → image / text / resource_link 内容块；diff 内容块 → UHP 产物
+- 会话模式可配：`Serial`（默认，任何 agent）/ `Parallel`（一个连接多会话并发，按 harness 开）
 - 测试用真实 ACP 协议（本仓内置假 agent 子进程），不依赖网络与模型
 
 ## 示例
@@ -26,6 +27,7 @@ bash scripts/real-smoke.sh    # 真实链路冒烟（默认 opencode acp）
 ## 文档
 
 - 使用教程：[docs/guide.md](docs/guide.md)
+- 支持矩阵（ACP 依赖面 / 各 harness 能力 / 进程组织）：[docs/support.md](docs/support.md)
 
 ## 许可证
 

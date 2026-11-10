@@ -61,6 +61,8 @@ class RecordingSink <: TurnSink {
     public var reasoning: String = ""
     public var calls: ArrayList<(String, String)> = ArrayList<(String, String)>()
     public var results: ArrayList<(String, String)> = ArrayList<(String, String)>()
+    // 多个会话并发时用前缀区分「这个 callId 是哪个 sink 发出去的」
+    public var idPrefix: String = ""
     private var seq: Int64 = 0
 
     public func textDelta(delta: String): Unit {
@@ -78,7 +80,7 @@ class RecordingSink <: TurnSink {
     public func toolCall(name: String, arguments: String): String {
         this.calls.add((name, arguments))
         this.seq = this.seq + 1
-        return "call_" + this.seq.toString()
+        return this.idPrefix + "call_" + this.seq.toString()
     }
 
     public func toolResult(callId: String, output: String): Unit {
@@ -500,5 +502,130 @@ func acp_close_releases_agent_and_allows_reconnect(): Unit {
     }
     @Expect(ok2, true)
     @Expect(sink.text, "echo: hello")
+}
+
+
+
+// ---- 会话执行模式：Serial（默认）/ Parallel ----
+
+@Test
+func parallel_sessions_keep_sinks_apart(): Unit {
+    // Parallel 的前提是 agent 支持「同一连接内不同会话并发执行回合」（DSH ACP profile 明确支持）。
+    // 锚点：两个会话同时在吐各自的 tick；互相看不到对方的输出。
+    let opts = AcpOptions(fakeAgentPath(), cwd: "/tmp", timeoutSeconds: 60,
+        sessionMode: AcpSessionMode.Parallel)
+    let driver = newDriver(opts)
+    let sinkA = RecordingSink()
+    let sinkB = RecordingSink()
+    let cancelA = CancelToken()
+    let cancelB = CancelToken()
+    let d = driver
+    let ta = spawn {
+        d.run(TurnContext("uhp-acp-par-a", "slow a", "m"), sinkA, cancelA)
+    }
+    let tb = spawn {
+        d.run(TurnContext("uhp-acp-par-b", "slow b", "m"), sinkB, cancelB)
+    }
+    var bothTicking = false
+    var waited = 0
+    while (waited < 3000) {
+        if (sinkA.text.contains("slow a") && sinkB.text.contains("slow b")) {
+            bothTicking = true
+            break
+        }
+        sleep(Duration.millisecond * 20)
+        waited = waited + 20
+    }
+    @Expect(bothTicking, true)
+    cancelA.cancel()
+    cancelB.cancel()
+    let _ = ta.get()
+    let _ = tb.get()
+    @Expect(sinkA.text.contains("slow b"), false)
+    @Expect(sinkB.text.contains("slow a"), false)
+}
+
+@Test
+func serial_mode_queues_overlapping_calls(): Unit {
+    // Serial（默认）：调用方并发调 run 也只是排队，不会互相覆盖 sink。
+    let driver = newDriver(optionsFor())
+    let sinkA = RecordingSink()
+    let sinkB = RecordingSink()
+    let d = driver
+    let ta = spawn {
+        d.run(TurnContext("uhp-acp-ser-a", "hello a", "m"), sinkA, CancelToken())
+    }
+    let tb = spawn {
+        d.run(TurnContext("uhp-acp-ser-b", "hello b", "m"), sinkB, CancelToken())
+    }
+    let oa = ta.get()
+    let ob = tb.get()
+    var okA = false
+    var okB = false
+    match (oa) {
+        case TurnOutcome.Completed(_) => okA = true
+        case _ => ()
+    }
+    match (ob) {
+        case TurnOutcome.Completed(_) => okB = true
+        case _ => ()
+    }
+    @Expect(okA, true)
+    @Expect(okB, true)
+    @Expect(sinkA.text, "echo: hello a")
+    @Expect(sinkB.text, "echo: hello b")
+}
+
+@Test
+func parallel_tool_calls_do_not_cross_sessions(): Unit {
+    // 两个会话的 ACP toolCallId 都是 call_write：按会话分开映射，toolResult 不能串到对方回合。
+    let opts = AcpOptions(fakeAgentPath(), cwd: "/tmp", timeoutSeconds: 60,
+        sessionMode: AcpSessionMode.Parallel)
+    let driver = newDriver(opts)
+    let sinkA = RecordingSink()
+    let sinkB = RecordingSink()
+    sinkA.idPrefix = "a-"
+    sinkB.idPrefix = "b-"
+    let d = driver
+    let ta = spawn {
+        d.run(TurnContext("uhp-acp-par-tool-a", "writefile a", "m"), sinkA, CancelToken())
+    }
+    let tb = spawn {
+        d.run(TurnContext("uhp-acp-par-tool-b", "writefile b", "m"), sinkB, CancelToken())
+    }
+    let _ = ta.get()
+    let _ = tb.get()
+    @Expect(sinkA.produced.size, 1)
+    @Expect(sinkB.produced.size, 1)
+    @Expect(sinkA.results.size, 1)
+    @Expect(sinkB.results.size, 1)
+    @Expect(sinkA.results[0][0], "a-call_1")
+    @Expect(sinkB.results[0][0], "b-call_1")
+    @Expect(sinkA.results[0][1].contains("wrote-out writefile a"), true)
+    @Expect(sinkB.results[0][1].contains("wrote-out writefile b"), true)
+}
+
+@Test
+func close_session_releases_and_recreates(): Unit {
+    // closeSession 是会话级回收：Agent 侧作用域释放，本地映射摘掉，同 id 再跑会重新建会话。
+    let driver = newDriver(optionsFor())
+    let first = driver.run(TurnContext("uhp-acp-close-sess", "hello", "m"), RecordingSink(), CancelToken())
+    var ok1 = false
+    match (first) {
+        case TurnOutcome.Completed(_) => ok1 = true
+        case _ => ()
+    }
+    @Expect(ok1, true)
+    driver.closeSession("uhp-acp-close-sess")
+    driver.closeSession("uhp-acp-unknown")
+    let sink = RecordingSink()
+    let second = driver.run(TurnContext("uhp-acp-close-sess", "hello again", "m"), sink, CancelToken())
+    var ok2 = false
+    match (second) {
+        case TurnOutcome.Completed(_) => ok2 = true
+        case _ => ()
+    }
+    @Expect(ok2, true)
+    @Expect(sink.text, "echo: hello again")
 }
 
