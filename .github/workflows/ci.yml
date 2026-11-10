@@ -77,7 +77,9 @@ jobs:
       # 诊断用：定位 ACP 测试在 runner 上的卡点（PR 关闭前删除）
       - name: 调试日志
         if: always()
-        run: cat /tmp/acp-dbg.log 2>/dev/null || echo "no dbg log"
+        run: |
+          cat /tmp/acp-dbg.log 2>/dev/null || echo "no dbg log"
+          echo "=== 残留假 agent 进程数: $(pgrep -c -f fake_agent || echo 0)"
 
   artifact-check:
     name: 制品自包含检查

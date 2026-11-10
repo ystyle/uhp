@@ -42,6 +42,20 @@ func optionsFor(): AcpOptions {
     return AcpOptions(fakeAgentPath(), cwd: "/tmp")
 }
 
+// 测试里创建的 driver 会在下一条用例开始时统一关闭：每个 driver 都持有假 agent 子进程 +
+// 一个阻塞读的接收线程，9 条用例全留着就是 9 份常驻资源，在 4 核 runner 上足以把调度拖死。
+let liveDrivers = ArrayList<AcpDriver>()
+
+func newDriver(opts: AcpOptions): AcpDriver {
+    for (d in liveDrivers) {
+        d.close()
+    }
+    liveDrivers.clear()
+    let d = AcpDriver(opts)
+    liveDrivers.add(d)
+    return d
+}
+
 class RecordingSink <: TurnSink {
     public var text: String = ""
     public var reasoning: String = ""
@@ -108,7 +122,7 @@ class Box {
 
 @Test
 func acp_round_trip_maps_updates(): Unit {
-    let driver = AcpDriver(optionsFor())
+    let driver = newDriver(optionsFor())
     let sink = RecordingSink()
     let outcome = driver.run(TurnContext("uhp-acp-1", "hello", "m"), sink, CancelToken())
     var completed = false
@@ -126,7 +140,7 @@ func acp_round_trip_maps_updates(): Unit {
 
 @Test
 func acp_stop_reasons_map_to_outcomes(): Unit {
-    let driver = AcpDriver(optionsFor())
+    let driver = newDriver(optionsFor())
     let refused = driver.run(TurnContext("uhp-acp-2", "refuse please", "m"), RecordingSink(), CancelToken())
     var failed = false
     match (refused) {
@@ -145,7 +159,7 @@ func acp_stop_reasons_map_to_outcomes(): Unit {
 
 @Test
 func acp_cancel_sends_session_cancel(): Unit {
-    let driver = AcpDriver(optionsFor())
+    let driver = newDriver(optionsFor())
     let cancel = CancelToken()
     let box = Box()
     let t = spawn {
@@ -169,7 +183,7 @@ func acp_cancel_sends_session_cancel(): Unit {
 func acp_permission_becomes_input_request(): Unit {
     let opts = AcpOptions(fakeAgentPath(), cwd: "/tmp", timeoutSeconds: 60,
         permissionTimeoutSeconds: 60)
-    let driver = AcpDriver(opts)
+    let driver = newDriver(opts)
     let sink1 = RecordingSink()
     dbg("[dbg] perm: run1 start")
     // 诊断用：独立心跳线程，判断卡住时是整个进程/文件写入停了，还是只有特定线程停了
@@ -316,7 +330,7 @@ func waitPort2(server: Server): UInt16 {
 func full_stack_acp_question_flows_through_uhp_server(): Unit {
     let opts = AcpOptions(fakeAgentPath(), cwd: "/tmp", timeoutSeconds: 120,
         permissionTimeoutSeconds: 120)
-    let driver = AcpDriver(opts)
+    let driver = newDriver(opts)
     let harness = ConfiguredHarness("chrn_acp", "ACP agent", "acp", "acp-agent", driver)
     let engine = Engine([harness])
     let tokens = HashMap<String, String>()
@@ -362,7 +376,7 @@ func full_stack_acp_question_flows_through_uhp_server(): Unit {
 
 @Test
 func input_files_are_mapped_to_acp_content_blocks(): Unit {
-    let driver = AcpDriver(optionsFor())
+    let driver = newDriver(optionsFor())
     let sink = RecordingSink()
     let files = [
         TurnFile("notes.txt", "text/plain", "alpha".toArray()),
@@ -383,7 +397,7 @@ func input_files_are_mapped_to_acp_content_blocks(): Unit {
 
 @Test
 func acp_diff_update_becomes_produced_file(): Unit {
-    let driver = AcpDriver(optionsFor())
+    let driver = newDriver(optionsFor())
     let sink = RecordingSink()
     let outcome = driver.run(TurnContext("uhp-acp-write", "writefile please", "m"), sink, CancelToken())
     var completed = false
@@ -416,7 +430,7 @@ func acpHttpGet(url: String): String {
 
 @Test
 func full_stack_artifact_is_listed_and_downloadable(): Unit {
-    let driver = AcpDriver(optionsFor())
+    let driver = newDriver(optionsFor())
     let harness = ConfiguredHarness("chrn_acp", "ACP agent", "acp", "acp-agent", driver)
     let engine = Engine([harness])
     let tokens = HashMap<String, String>()
@@ -449,7 +463,7 @@ func full_stack_artifact_is_listed_and_downloadable(): Unit {
 
 @Test
 func acp_elicitation_becomes_input_request(): Unit {
-    let driver = AcpDriver(optionsFor())
+    let driver = newDriver(optionsFor())
     let sink1 = RecordingSink()
     let first = driver.run(TurnContext("uhp-acp-elicit", "elicit please", "m"), sink1, CancelToken())
     var incomplete = false
