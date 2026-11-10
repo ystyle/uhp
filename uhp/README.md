@@ -10,7 +10,10 @@ UHP 定义「产品如何通过 HTTP 驱动一个完整的 agent harness」：�
 - 答对：状态机、SSE 事件通道、幂等、存储接缝。
 
 **不交付 harness 本身**（agent 循环、模型调用、工具执行），那是消费方的职责；
-本仓只提供 `HarnessDriver` 接缝与测试/一致性用的 ScriptedHarness（规划中）。
+本仓只提供 `HarnessDriver` 接缝与测试/一致性用的 ScriptedHarness。
+
+**已发布中心仓**：`uhp` **0.1.0**（2026-11-10；sha256 `a0e835c349ff121b6b0adbff6daf8e38be7fd633074bcd38bfdd2a3509de2c35`）。
+在 `cjpm.toml` 里写 `"uhp" = "0.1.0"` 即可依赖。
 
 它不是 JSON-RPC 框架：协议是 HTTP/1.1 + JSON(REST) + SSE，与工作区的 mcp-cj / a2a-cj / acp-cj 不同形。
 
