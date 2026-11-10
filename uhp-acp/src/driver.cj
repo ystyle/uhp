@@ -97,6 +97,21 @@ public class AcpDriver <: HarnessDriver {
         this.opts = opts
     }
 
+    // 释放 Agent 子进程与接收线程。适配器持有的是外部进程，driver 退出时必须显式收尾，
+    // 否则子进程与阻塞中的接收线程会一直挂在那里（长跑服务换 driver、测试用例收尾都受影响）。
+    public func close(): Unit {
+        // 先摘掉引用再关：关闭链路会等子进程退出，不能把锁一起抱着（回调线程还要取它）
+        let c: Option<AcpClient> = synchronized(this.lock) {
+            let cur = this.client
+            this.client = None
+            cur
+        }
+        match (c) {
+            case Some(cc) => cc.close()
+            case None => ()
+        }
+    }
+
     public func base(): String {
         return "acp"
     }

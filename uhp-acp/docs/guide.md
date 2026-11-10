@@ -48,6 +48,10 @@ bash scripts/real-smoke.sh    # 真实链路：UHP 任务 → opencode acp → �
 
 `AcpOptions(command, args = [], cwd = "/tmp", label = "ACP agent", clientName = "uhp-cj", timeoutSeconds = 600, permissionTimeoutSeconds = 600)`。
 
-`AcpDriver(opts)` 实现 `HarnessDriver`：`base/baseLabel/models/capabilities/run`。
+`AcpDriver(opts)` 实现 `HarnessDriver`：`base/baseLabel/models/capabilities/run`；另有 `close()`。
+
+**`close()` 必须调用**：driver 持有的是真实 Agent 子进程 + 一个阻塞读的接收线程，不关就一直在。
+长跑服务里换 driver、进程退出前收尾，都应当显式 `close()`；可重复调用（幂等）。
+关闭后再 `run()` 会重新拉起 Agent，因此也可以用它做「丢掉坏连接重连」。
 
 已知限制：只声明 `elicitation.form` 能力（url 模式如实不支持）；ACP 没有 usage/cost 字段，不臆造。
