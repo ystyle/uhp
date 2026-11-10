@@ -5,10 +5,6 @@ on:
     branches: [master, main]
   pull_request:
 
-env:
-  # 静态 stdx 路径（setup-cangjie 提供）。成员 cjpm.toml 用 ${CANGJIE_STDX_PATH} 引用。
-  CANGJIE_STDX_PATH: ${{ env.CANGJIE_STDX_PATH_STATIC }}/stdx
-
 jobs:
   build-test:
     name: 构建 · 全部成员测试
@@ -23,9 +19,13 @@ jobs:
           components: stdx
 
       - name: Build（SDK + 两个适配器成员）
+        env:
+          CANGJIE_STDX_PATH: ${{ env.CANGJIE_STDX_PATH_STATIC }}/stdx
         run: cjpm build -j 8
 
-      - name: Tests（workspace 要起子进程，按约定 -j 4）
+      - name: Tests（workspace 要起子进程，按仓内约定 -j 4）
+        env:
+          CANGJIE_STDX_PATH: ${{ env.CANGJIE_STDX_PATH_STATIC }}/stdx
         run: cjpm test -j 4 --no-progress
 
   artifact-check:
@@ -41,6 +41,8 @@ jobs:
           components: stdx
 
       - name: 打制品（跳过 lint 与测试，测试由上一步负责）
+        env:
+          CANGJIE_STDX_PATH: ${{ env.CANGJIE_STDX_PATH_STATIC }}/stdx
         run: |
           set -e
           for m in uhp uhp-opencode uhp-acp; do
@@ -48,6 +50,8 @@ jobs:
           done
 
       - name: 解包后独立构建（证明制品自包含）
+        env:
+          CANGJIE_STDX_PATH: ${{ env.CANGJIE_STDX_PATH_STATIC }}/stdx
         run: |
           set -e
           for m in uhp uhp-opencode uhp-acp; do
@@ -69,5 +73,5 @@ jobs:
             uhp-acp/target/*.cjp
           if-no-files-found: warn
 
-  # 一致性套件（官方 uhp-conformance，Python 包，不在本仓）不在 CI 里跑：
+  # 一致性套件（官方 uhp-conformance，Python 包，不在本仓）不进 CI：
   # 本地用 bash uhp/scripts/conformance.sh core|extended|full。
