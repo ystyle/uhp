@@ -42,7 +42,29 @@ jobs:
         env:
           CANGJIE_STDX_PATH: ${{ env.CANGJIE_STDX_PATH_STATIC }}/stdx
         working-directory: uhp-acp
-        run: timeout 150 cjpm test -j 4
+        run: |
+          set +e
+          cjpm test -j 4 & pid=$!
+          for i in $(seq 1 30); do
+            sleep 5
+            if ! kill -0 $pid 2>/dev/null; then wait $pid; echo "tests exited: $?"; exit 0; fi
+          done
+          echo '=== 150s 未结束，抓线程状态'
+          ps -eo pid,ppid,pgid,stat,comm | grep -E 'cjpm|testrunner|fake_agent' || true
+          found=0
+          for p in $(ps -eo pid,comm | grep -E 'testrunner' | grep -v grep | awk '{print $1}'); do
+            found=1
+            echo "=== process $p"
+            for t in $(ls /proc/$p/task 2>/dev/null); do
+              echo "--- tid $t comm=$(cat /proc/$p/task/$t/comm 2>/dev/null) state=$(awk '{print $3}' /proc/$p/task/$t/stat 2>/dev/null) wchan=$(cat /proc/$p/task/$t/wchan 2>/dev/null)"
+              cat /proc/$p/task/$t/syscall 2>/dev/null
+            done
+            if ! command -v gdb >/dev/null; then sudo apt-get install -y -qq gdb >/dev/null 2>&1 || true; fi
+            if command -v gdb >/dev/null; then sudo gdb -p $p -batch -ex 'thread apply all bt' 2>&1 | head -200 || true; fi
+          done
+          echo "testrunner found=$found"
+          kill -9 $pid 2>/dev/null || true
+          exit 1
 
       # 诊断用：单独跑权限用例，判断是「累积状态」还是「该用例必然卡」（PR 关闭前删除）
       - name: 单独跑权限用例
