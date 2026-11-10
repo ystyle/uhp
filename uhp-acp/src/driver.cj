@@ -31,6 +31,19 @@ import ystyle::jsonrpc.Result
 import uhp.server.*
 import uhp.types.generated.*
 
+// 一个 ACP 连接内是否允许不同会话的回合**并发**执行。
+//
+// ACP 规范只保证「一个 Agent 可以承载多个独立会话」，没有承诺同一连接内并发执行回合
+// （也没有对应的 capability 字段可协商），所以并发是 agent 实现相关的能力：
+//   * Serial（默认）：同一时刻只跑一路回合。任何 ACP agent 都能用；要并发就由上层多开进程。
+//   * Parallel：不同会话的回合并发执行，只对确认支持的 agent 开（如 DSH 的 --profile acp，
+//     其文档明确「一个连接可以同时运行多个会话，彼此独立」）。
+// 同一会话无论哪种模式都串行：UHP 一轮对应一个 TurnContext，续跑走 answer 回填。
+public enum AcpSessionMode {
+    | Serial
+    | Parallel
+}
+
 public class AcpOptions {
     public let command: String
     public let args: Array<String>
@@ -39,10 +52,12 @@ public class AcpOptions {
     public let clientName: String
     public let timeoutSeconds: Int64
     public let permissionTimeoutSeconds: Int64
+    public let sessionMode: AcpSessionMode
 
     public init(command: String, args!: Array<String> = [], cwd!: String = "/tmp",
                 label!: String = "ACP agent", clientName!: String = "uhp-cj",
-                timeoutSeconds!: Int64 = 600, permissionTimeoutSeconds!: Int64 = 600) {
+                timeoutSeconds!: Int64 = 600, permissionTimeoutSeconds!: Int64 = 600,
+                sessionMode!: AcpSessionMode = AcpSessionMode.Serial) {
         this.command = command
         this.args = args
         this.cwd = cwd
@@ -50,6 +65,7 @@ public class AcpOptions {
         this.clientName = clientName
         this.timeoutSeconds = timeoutSeconds
         this.permissionTimeoutSeconds = permissionTimeoutSeconds
+        this.sessionMode = sessionMode
     }
 }
 
@@ -86,10 +102,13 @@ class TurnState {
 public class AcpDriver <: HarnessDriver {
     private let opts: AcpOptions
     private let lock = Mutex()
+    // Serial 模式的回合闸门：同一 driver 一次只跑一路回合（Parallel 模式不取）
+    private let runLock = Mutex()
     private var client: Option<AcpClient> = None
-    private var currentSink: Option<TurnSink> = None
-    private var currentSession: String = ""
-    private let callIds = HashMap<String, String>()
+    // ACP 会话 -> 当前回合的 sink：并行模式下靠它把 session/update 路由到对应会话的回合
+    private let sinks = HashMap<String, TurnSink>()
+    // ACP 会话 -> (ACP toolCallId -> UHP callId)。按会话分开存：不同会话的 toolCallId 可能重名
+    private let callIds = HashMap<String, HashMap<String, String>>()
     private let sessions: HashMap<String, String> = HashMap<String, String>()
     private let turns: HashMap<String, TurnState> = HashMap<String, TurnState>()
 
@@ -109,6 +128,50 @@ public class AcpDriver <: HarnessDriver {
         match (c) {
             case Some(cc) => cc.close()
             case None => ()
+        }
+    }
+
+    // 关闭一个 UHP 会话：让 Agent 回收该会话的作用域（内存随会话数增长的根源），
+    // 并把本地映射一起摘掉——同一 uhp session id 下次 run 会重新 session/new，复用不到旧会话。
+    //
+    // 只应在该会话的回合已结束（Completed/Incomplete/Cancelled）后调用；回合在跑时调用属于
+    // 调用方违约（Agent 侧行为由它自己决定）。Agent 不支持 session/close 时尽力而为：只记日志。
+    public func closeSession(uhpSession: String): Unit {
+        let target: Option<(AcpClient, String)> = synchronized(this.lock) {
+            match (this.sessions.get(uhpSession)) {
+                case Some(sid) =>
+                    this.sessions.remove(uhpSession)
+                    this.turns.remove(uhpSession)
+                    this.callIds.remove(sid)
+                    this.sinks.remove(sid)
+                    match (this.client) {
+                        case Some(c) => Some((c, sid))
+                        case None => None
+                    }
+                case None => None
+            }
+        }
+        match (target) {
+            case Some((c, sid)) =>
+                try {
+                    match (c.closeSession(sid)) {
+                        case Result.Ok(_) => ()
+                        case Result.Err(msg) => eprintln("acp: session/close failed (" + sid + "): " + msg)
+                    }
+                } catch (e: Exception) {
+                    eprintln("acp: session/close threw (" + sid + "): " + e.toString())
+                }
+            case None => ()
+        }
+    }
+
+    // 某个 UHP 会话的回合异常退出时清掉它的 sink 槽，避免后续 update 写到旧回合
+    private func dropSink(uhpSession: String): Unit {
+        synchronized(this.lock) {
+            match (this.sessions.get(uhpSession)) {
+                case Some(sid) => this.sinks.remove(sid)
+                case None => ()
+            }
         }
     }
 
@@ -134,10 +197,24 @@ public class AcpDriver <: HarnessDriver {
     }
 
     public func run(ctx: TurnContext, sink: TurnSink, cancel: CancelToken): TurnOutcome {
+        // Serial 模式用一个 driver 级闸门保证「一次只跑一路回合」：调用方即使并发调 run，
+        // 也只会排队，不会互相覆盖 sink。Parallel 模式把并发交给 ACP agent。
+        match (this.opts.sessionMode) {
+            case AcpSessionMode.Serial =>
+                return synchronized(this.runLock) {
+                    this.runGuarded(ctx, sink, cancel)
+                }
+            case AcpSessionMode.Parallel =>
+                return this.runGuarded(ctx, sink, cancel)
+        }
+    }
+
+    private func runGuarded(ctx: TurnContext, sink: TurnSink, cancel: CancelToken): TurnOutcome {
         try {
             return this.runInner(ctx, sink, cancel)
         } catch (e: Exception) {
             eprintln("acp: driver exception: " + e.toString())
+            this.dropSink(ctx.sessionId)
             return TurnOutcome.Failed("harness_error", "ACP adapter error")
         }
     }
@@ -167,8 +244,7 @@ public class AcpDriver <: HarnessDriver {
         }
         synchronized(this.lock) {
             state.sink = Some(sink)
-            this.currentSink = Some(sink)
-            this.currentSession = acpSession
+            this.sinks[acpSession] = sink
         }
         if (!resumeOnly) {
             synchronized(this.lock) {
@@ -204,8 +280,7 @@ public class AcpDriver <: HarnessDriver {
             if (done) {
                 synchronized(this.lock) {
                     state.sink = None
-                    this.currentSink = None
-                    this.currentSession = ""
+                    this.sinks.remove(acpSession)
                 }
                 match (err) {
                     case Some(msg) => return TurnOutcome.Failed("harness_error", "ACP prompt failed: " + msg)
@@ -226,7 +301,7 @@ public class AcpDriver <: HarnessDriver {
                 synchronized(this.lock) {
                     state.permAsked = true
                     state.sink = None
-                    this.currentSink = None
+                    this.sinks.remove(acpSession)
                 }
                 return TurnOutcome.Incomplete(IncompleteReason.InputRequired, None)
             }
@@ -247,7 +322,7 @@ public class AcpDriver <: HarnessDriver {
                 synchronized(this.lock) {
                     state.elicitAsked = true
                     state.sink = None
-                    this.currentSink = None
+                    this.sinks.remove(acpSession)
                 }
                 return TurnOutcome.Incomplete(IncompleteReason.InputRequired, None)
             }
@@ -255,6 +330,10 @@ public class AcpDriver <: HarnessDriver {
                 client.cancel(acpSession)
             }
             sleep(Duration.millisecond * 10)
+        }
+        synchronized(this.lock) {
+            state.sink = None
+            this.sinks.remove(acpSession)
         }
         return TurnOutcome.Failed("harness_error", "ACP timeout")
     }
@@ -513,11 +592,7 @@ public class AcpDriver <: HarnessDriver {
 
     private func onUpdate(sid: String, update: SessionUpdate) {
         let target: Option<TurnSink> = synchronized(this.lock) {
-            if (sid != this.currentSession) {
-                None
-            } else {
-                this.currentSink
-            }
+            this.sinks.get(sid)
         }
         let sink = match (target) {
             case Some(s) => s
@@ -550,13 +625,16 @@ public class AcpDriver <: HarnessDriver {
             let uhpCall = sink.toolCall(title, args)
             if (acpId.size > 0) {
                 synchronized(this.lock) {
-                    this.callIds[acpId] = uhpCall
+                    let perSession = this.callIds.get(sid) ?? HashMap<String, String>()
+                    perSession[acpId] = uhpCall
+                    this.callIds[sid] = perSession
                 }
             }
         } else if (kind == SessionUpdateToolCallUpdate) {
             let acpId = update.toolCallId ?? ""
             let uhpCall = synchronized(this.lock) {
-                this.callIds.get(acpId) ?? acpId
+                let perSession = this.callIds.get(sid) ?? HashMap<String, String>()
+                perSession.get(acpId) ?? acpId
             }
             var text = ""
             match (update.toolContent) {

@@ -20,6 +20,8 @@ main() {
         if (text.contains("writefile")) {
             let items = ArrayList<ToolCallContent>()
             items.add(ToolCallContent.diff("out.txt", "artifact-ok"))
+            // 再带一条文本内容：toolResult 里能看出「这是哪个会话的产物」
+            items.add(ToolCallContent.ofContent(ContentBlock.ofText("wrote-out " + text)))
             ctx.emit(SessionUpdate.toolCall("call_write", "write out.txt"))
             ctx.emit(SessionUpdate.toolCallUpdate("call_write", status: "completed", content: items))
             ctx.emit(SessionUpdate.agentMessage("wrote out.txt"))
@@ -79,12 +81,13 @@ main() {
             return PromptResponse(StopReasonEndTurn)
         }
         if (text.contains("slow")) {
+            // 把提示词带进 tick：并发会话的测试据此判断「这段输出属于哪个会话」
             var i = 0
             while (i < 300) {
                 if (ctx.isCancelled()) {
                     return PromptResponse(StopReasonCancelled)
                 }
-                ctx.emit(SessionUpdate.agentMessage("tick "))
+                ctx.emit(SessionUpdate.agentMessage("tick " + text + " "))
                 sleep(Duration.millisecond * 10)
                 i = i + 1
             }
