@@ -69,6 +69,7 @@ bash scripts/real-smoke.sh    # 真实链路：UHP 任务 → opencode acp → �
 pi 没有原生 ACP，要配一个 ACP 适配层。**推荐 in-process 的实现**（单进程承载多会话、支持 `session/close`）：
 `AcpOptions("openma-pi-acp")`（`@openma/pi-acp`）或 `AcpOptions("pi-acp")`（`@automatalabs/pi-acp`，与下面同名包不是一回事）。
 旧的 `pi-acp` 0.0.34（svkozak）是每会话一个 pi 子进程、没有 `session/close`，只适合 `process-per-worker`，不推荐。
+装法：`npm i -g @openma/pi-acp`（或 `@automatalabs/pi-acp`）。
 `session/new` 之前需要 pi 已完成认证（`pi auth login` 或环境里有 `DEEPSEEK_API_KEY`）。
 
 ACP 规范没有承诺单连接内并发执行回合，所以**默认按最保守的 `Serial` + 每 worker 一进程**；
