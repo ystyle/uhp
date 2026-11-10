@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+env:
+  # 静态 stdx 路径（setup-cangjie 提供）。成员 cjpm.toml 用 ${CANGJIE_STDX_PATH} 引用。
+  CANGJIE_STDX_PATH: ${{ env.CANGJIE_STDX_PATH_STATIC }}/stdx
+
+jobs:
+  build-test:
+    name: 构建 · 全部成员测试
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: Zxilly/setup-cangjie@v3
+        with:
+          channel: sts
+          version: 1.2.0
+          components: stdx
+
+      - name: Build（SDK + 两个适配器成员）
+        run: cjpm build -j 8
+
+      - name: Tests（workspace 要起子进程，按约定 -j 4）
+        run: cjpm test -j 4 --no-progress
+
+  artifact-check:
+    name: 制品自包含检查
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: Zxilly/setup-cangjie@v3
+        with:
+          channel: sts
+          version: 1.2.0
+          components: stdx
+
+      - name: 打制品（跳过 lint 与测试，测试由上一步负责）
+        run: |
+          set -e
+          for m in uhp uhp-opencode uhp-acp; do
+            (cd "$m" && cjpm bundle --skip-lint --skip-test)
+          done
+
+      - name: 解包后独立构建（证明制品自包含）
+        run: |
+          set -e
+          for m in uhp uhp-opencode uhp-acp; do
+            f=$(ls "$m"/target/*.cjp | head -1)
+            d=$(mktemp -d)
+            tar xzf "$f" -C "$d"
+            root=$(ls -d "$d"/*)
+            (cd "$root" && cjpm build -j 8)
+            echo "OK: $m -> $(basename "$root")"
+            rm -rf "$d"
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cjp-artifacts
+          path: |
+            uhp/target/*.cjp
+            uhp-opencode/target/*.cjp
+            uhp-acp/target/*.cjp
+          if-no-files-found: warn
+
+  # 一致性套件（官方 uhp-conformance，Python 包，不在本仓）不在 CI 里跑：
+  # 本地用 bash uhp/scripts/conformance.sh core|extended|full。

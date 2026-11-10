@@ -3,6 +3,7 @@
 package uhp_acp
 
 import std.collection.{ArrayList, HashMap}
+import std.fs.{File as FsFile, Path}
 import std.fs.canonicalize
 import std.sync.{AtomicBool, Mutex}
 import std.unittest.*
@@ -13,9 +14,28 @@ import stdx.encoding.json.stream.*
 import stdx.net.http.*
 import uhp.types.generated.*
 
+// 假 agent 二进制：workspace 根 target 或成员目录 target 都找一下
+// （cjpm bundle 会在成员目录里跑测试，产物在 workspace 根 target 下）
 func fakeAgentPath(): String {
     let cwd = canonicalize(".").toString()
-    return cwd + "/target/release/bin/uhp_acp.examples.fake_agent"
+    let direct = cwd + "/target/release/bin/uhp_acp.examples.fake_agent"
+    let parent = cwd + "/../target/release/bin/uhp_acp.examples.fake_agent"
+    if (readable(direct)) {
+        return direct
+    }
+    if (readable(parent)) {
+        return parent
+    }
+    return direct
+}
+
+func readable(path: String): Bool {
+    try {
+        let _ = FsFile.readFrom(Path(path))
+        return true
+    } catch (e: Exception) {
+        return false
+    }
 }
 
 func optionsFor(): AcpOptions {
