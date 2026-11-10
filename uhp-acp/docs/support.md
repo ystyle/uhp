@@ -42,8 +42,12 @@
 |---|---|---|---|---|---|
 | **opencode**（`opencode acp`） | ✅ 实测 | ✅ 实测（两任务 0.87s 交错、总耗时 4.6s，非串行） | ✅ 实测（返回 `{}`） | ✅ 实测 | 可用 `shared` + `Parallel` |
 | DSH（`dsh --profile acp`） | ✅ 文档 | ✅ 文档明确「一个连接可以同时运行多个会话，彼此独立」 | ✅ 文档 | ✅ 文档 | 端到端待接入 starline 后实测 |
-| pi（1.5.2） | ❌ 无原生 ACP | ❌ | ❌ | ❌ | 只有 `--mode rpc`（自有 JSONL 协议，非 ACP）；要用 pi 得写 `uhp-pi` 适配器或找 ACP 扩展 |
+| **pi（经 `pi-acp` 0.0.34）** | ✅ 实测 | ✅ 结构上并发（每个会话一个 `pi --mode rpc` 子进程） | ❌ 未实现 `session/close`；`session/delete` 只删映射/会话文件，**不释放活动子进程** | ✅ `list`；`delete` | 可用，但按 `process-per-worker` 用：无会话级回收，内存 = N 个 pi 进程；`session/new` 前需要 pi 先完成认证 |
+| pi 原生（1.5.2） | ❌ 无 ACP | — | — | — | 只有 `--mode rpc`（自有 JSONL 协议）；ACL 需要 `pi-acp` 这类适配层 |
 | claude-code（ACP 桥） | 待实测 | 待实测 | 待实测 | 待实测 | 未测 |
+
+pi-acp 的实测办法（需先 `pi --terminal-login` 或配好 API key，否则 `session/new` 直接返回 auth_required）：
+`python3 scripts/acp-capability-probe.py pi-acp --cwd <workspace> --env HOME=<隔离的 home>`
 
 opencode 的实测办法：`python3 scripts/acp-capability-probe.py <opencode> acp --cwd <workspace> --env XDG_CONFIG_HOME=...`。
 它打印 initialize 能力、两个会话的并发 prompt 时间线、`session/list`/`session/close` 结果。

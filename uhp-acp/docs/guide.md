@@ -66,6 +66,9 @@ bash scripts/real-smoke.sh    # 真实链路：UHP 任务 → opencode acp → �
 | `Serial`（默认） | 同一 driver 一次只跑一路回合 | 每个并发 worker 一个 driver（= 一个 Agent 进程） |
 | `Parallel` | 不同会话并发送中；同一会话仍串行 | 一个 driver 服务多个会话，只对确认支持的 agent 开 |
 
+pi 没有原生 ACP，要走 `pi-acp`（第三方适配层）：`AcpOptions("pi-acp")`。它的会话回收只到进程级（未实现 `session/close`），
+所以 pi 一律按 `process-per-worker` 用，任务结束关整个连接；`session/new` 之前需要 pi 已完成认证（`pi --terminal-login` 或配好 API key）。
+
 ACP 规范没有承诺单连接内并发执行回合，所以**默认按最保守的 `Serial` + 每 worker 一进程**；
 各 harness 的实测能力见 [support.md](support.md)，没实测过的先当不支持。
 

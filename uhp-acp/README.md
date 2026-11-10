@@ -1,6 +1,6 @@
 # uhp-acp
 
-ACP（Agent Client Protocol）的 UHP `HarnessDriver` 适配器：把 ACP 的 session/update 翻译成 UHP 的 TurnSink / TurnOutcome，一次覆盖 `opencode acp`、dsh、pi、claude-code 这类 agent。
+ACP（Agent Client Protocol）的 UHP `HarnessDriver` 适配器：把 ACP 的 session/update 翻译成 UHP 的 TurnSink / TurnOutcome，一次覆盖 `opencode acp`、`dsh --profile acp`、`pi-acp`、claude-code 桥这类 agent。
 
 ## 特性
 
