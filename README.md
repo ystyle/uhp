@@ -14,8 +14,8 @@
 | 成员 | 说明 |
 |---|---|
 | [uhp/](uhp) | SDK：客户端 + 服务端骨架 + HarnessDriver 接缝（中心仓 `0.1.0`） |
-| [uhp-opencode/](uhp-opencode) | opencode 2.x 适配器（HTTP + SSE） |
-| [uhp-acp/](uhp-acp) | ACP 通用适配器（stdio JSON-RPC，覆盖 dsh / pi / claude-code） |
+| [uhp-opencode/](uhp-opencode) | opencode 2.x 适配器（HTTP + SSE，中心仓 0.1.0） |
+| [uhp-acp/](uhp-acp) | ACP 通用适配器（stdio JSON-RPC，覆盖 dsh / pi / claude-code，中心仓 0.1.0） |
 
 ## 示例
 

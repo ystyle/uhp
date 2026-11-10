@@ -9,12 +9,12 @@
   version = "0.1.0"
   license = ["MulanPSL-2.0"]
   authors = ["ystyle"]
-  repository = "https://atomgit.com/ystyle/uhp-opencode"
+  repository = "https://atomgit.com/ystyle/uhp"
   output-type = "static"
   compile-option = "-Woff unused"
   link-option = "-lstdx.crypto.digest"
   include = ["/src", "/LICENSE"]
-  exclude = ["/docs", "/scripts", "/target"]
+  exclude = ["/docs", "/scripts", "/target", "/src/**/*_test.cj"]
 
 
 

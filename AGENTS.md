@@ -50,7 +50,6 @@ bash scripts/test.sh           # cjpm build + cjpm test -j 4（全部成员）
 
 ## 6. 发版
 
-- 产品版本在 workspace.toml（[workspace.package] version）；**只有 uhp 发布**，
-  uhp-opencode / uhp-acp 在 [workspace.publish] exclude 里。
+- 产品版本在 workspace.toml（[workspace.package] version）；**三个成员统一发布**，版本由 [workspace.package] 统一推进。
 - 走工作区闸门：`./scripts/workspace-release.sh check uhp --exclude uhp_acp,uhp_opencode`（dry-run 预演）→ 私有仓预演 → 中心仓（脚本只认预演仓；中心仓按 cangjie-publish skill 手工发）。
 - 发版前必须：bash scripts/test.sh 绿 + 三档一致性报告刷新 + 制品解包核对（见工作区 docs/publish-scope.md）。
