@@ -30,19 +30,19 @@ jobs:
         env:
           CANGJIE_STDX_PATH: ${{ env.CANGJIE_STDX_PATH_STATIC }}/stdx
         working-directory: uhp
-        run: timeout 900 cjpm test -j 4 --no-progress
+        run: timeout 900 cjpm test -j 4
 
       - name: Tests · uhp-opencode
         env:
           CANGJIE_STDX_PATH: ${{ env.CANGJIE_STDX_PATH_STATIC }}/stdx
         working-directory: uhp-opencode
-        run: timeout 600 cjpm test -j 4 --no-progress
+        run: timeout 600 cjpm test -j 4
 
       - name: Tests · uhp-acp
         env:
           CANGJIE_STDX_PATH: ${{ env.CANGJIE_STDX_PATH_STATIC }}/stdx
         working-directory: uhp-acp
-        run: timeout 600 cjpm test -j 4 --no-progress
+        run: timeout 600 cjpm test -j 4
 
   artifact-check:
     name: 制品自包含检查
