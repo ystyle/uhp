@@ -42,11 +42,11 @@
 |---|---|---|---|---|---|
 | **opencode**（`opencode acp`） | ✅ 实测 | ✅ 实测（两任务 0.87s 交错、总耗时 4.6s，非串行） | ✅ 实测（返回 `{}`） | ✅ 实测 | 可用 `shared` + `Parallel` |
 | DSH（`dsh --profile acp`） | ✅ 文档 | ✅ 文档明确「一个连接可以同时运行多个会话，彼此独立」 | ✅ 文档 | ✅ 文档 | 端到端待接入 starline 后实测 |
-| **pi（经 `pi-acp` 0.0.34）** | ✅ 实测 | ✅ 结构上并发（每个会话一个 `pi --mode rpc` 子进程） | ❌ 未实现 `session/close`；`session/delete` 只删映射/会话文件，**不释放活动子进程** | ✅ `list`；`delete` | 可用，但按 `process-per-worker` 用：无会话级回收，内存 = N 个 pi 进程；`session/new` 前需要 pi 先完成认证 |
+| **pi（经 `pi-acp` 0.0.34）** | ✅ 实测 | ✅ 实测（两会话 chunk 交错：s1 1.5→4.39s、s2 2.78→4.19s；每会话一个 `pi --mode rpc` 子进程） | ❌ 实测 `-32601` 未实现；`session/delete` 只删映射/会话文件，**不释放活动子进程** | ⚠️ `list` 对新建会话返回空（不可靠）；`delete` 可用 | 可用，但按 `process-per-worker` 用：无会话级回收，内存 = N 个 pi 进程；经 UHP 单任务实测 completed（deepseek-flash） |
 | pi 原生（1.5.2） | ❌ 无 ACP | — | — | — | 只有 `--mode rpc`（自有 JSONL 协议）；ACL 需要 `pi-acp` 这类适配层 |
 | claude-code（ACP 桥） | 待实测 | 待实测 | 待实测 | 待实测 | 未测 |
 
-pi-acp 的实测办法（需先 `pi --terminal-login` 或配好 API key，否则 `session/new` 直接返回 auth_required）：
+pi-acp 的实测办法（需先 `pi auth login` 或环境里 `DEEPSEEK_API_KEY`，否则 `session/new` 直接返回 auth_required）：
 `python3 scripts/acp-capability-probe.py pi-acp --cwd <workspace> --env HOME=<隔离的 home>`
 
 opencode 的实测办法：`python3 scripts/acp-capability-probe.py <opencode> acp --cwd <workspace> --env XDG_CONFIG_HOME=...`。
@@ -70,3 +70,4 @@ opencode 声明了 `sessionCapabilities: {list, close, delete, fork, resume, add
 - ACP 没有 usage/cost 字段，不臆造。
 - `session/list` / `session/resume` 未接入：跨进程续跑目前由上层持有会话 id + UHP 侧历史实现。
 - `Parallel` 模式下若 agent 实际串行执行，只是拿不到并发收益，不影响正确性。
+- pi-acp 会在回合开头把 pi 的 startup info（版本/上下文/技能）当 assistant 文本发出来；要干净输出在 pi settings 里设 `quietStartup: true`。
