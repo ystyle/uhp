@@ -2,10 +2,11 @@
 # 真实链路冒烟（pi）：pi-acp 当 ACP agent，跑一个 UHP 任务。
 #
 # 前置：
-#   1. 本机装了 pi 与 pi-acp（npm i -g @earendil-works/pi-coding-agent pi-acp）
+#   1. 本机装了 pi（npm i -g @earendil-works/pi-coding-agent）与一个 pi 的 ACP 适配器
 #   2. pi 有可用模型与凭据：pi auth login，或环境里有 DEEPSEEK_API_KEY
 #   3. pi 有默认模型（pi settings 的 defaultProvider/defaultModel）
 # 用法：bash scripts/real-smoke-pi.sh
+#   PI_ACP_BIN=<适配器可执行>   默认依次找 openma-pi-acp / pi-acp
 #   PI_WS=<工作目录> PI_HOME_DIR=<隔离的 HOME>（可选，避免写用户 home）
 set -eo pipefail
 ROOT="$(cd "$(dirname "$BASH_SOURCE")/.." && pwd)"
@@ -19,7 +20,10 @@ if [ -z "$DEEPSEEK_API_KEY" ] && [ ! -s "$HOME/.pi/agent/auth.json" ]; then
   echo "pi 未认证：先 pi auth login，或在环境里导出 DEEPSEEK_API_KEY" >&2
   exit 2
 fi
-if ! command -v pi-acp >/dev/null; then echo "找不到 pi-acp" >&2; exit 2; fi
+if [ -z "$PI_ACP_BIN" ]; then
+  if command -v openma-pi-acp >/dev/null; then PI_ACP_BIN=openma-pi-acp; else PI_ACP_BIN=pi-acp; fi
+fi
+if ! command -v "$PI_ACP_BIN" >/dev/null; then echo "找不到 pi 的 ACP 适配器：$PI_ACP_BIN" >&2; exit 2; fi
 mkdir -p "$WS" "$LOGS"
 
 cd "$ROOT"
@@ -30,8 +34,8 @@ cjpm build -j 8
 # 工具链环境加载完之后再切 HOME：cjvs 自己会往 ~/.config 写东西
 if [ -n "$PI_HOME_DIR" ]; then export HOME="$PI_HOME_DIR"; fi
 
-echo "==> 起 UHP 服务端 :$PORT（driver = ACP Serial，agent = pi-acp）"
-"$ROOT/target/release/bin/uhp_acp.examples.uhp_server" "$PORT" "$WS" pi-acp > "$LOGS/uhp-acp-pi.log" 2>&1 &
+echo "==> 起 UHP 服务端 :$PORT（driver = ACP Serial，agent = $PI_ACP_BIN）"
+"$ROOT/target/release/bin/uhp_acp.examples.uhp_server" "$PORT" "$WS" "$PI_ACP_BIN" > "$LOGS/uhp-acp-pi.log" 2>&1 &
 UHP_PID=$!
 trap 'kill $UHP_PID 2>/dev/null || true' EXIT
 code=""

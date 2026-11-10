@@ -40,20 +40,31 @@
 
 | harness | 多会话（单连接） | 回合并发 | `session/close` | `session/list` | 结论 |
 |---|---|---|---|---|---|
-| **opencode**（`opencode acp`） | ✅ 实测 | ✅ 实测（两任务 0.87s 交错、总耗时 4.6s，非串行） | ✅ 实测（返回 `{}`） | ✅ 实测 | 可用 `shared` + `Parallel` |
+| **opencode**（`opencode acp`） | ✅ 实测 | ✅ 实测（两任务 0.87s 交错、总耗时 4.6s，非串行） | ✅ 实测（返回 `{}`） | ✅ 实测 | `shared` + `Parallel` |
 | DSH（`dsh --profile acp`） | ✅ 文档 | ✅ 文档明确「一个连接可以同时运行多个会话，彼此独立」 | ✅ 文档 | ✅ 文档 | 端到端待接入 starline 后实测 |
-| **pi（经 `pi-acp` 0.0.34）** | ✅ 实测 | ✅ 实测（两会话 chunk 交错：s1 1.5→4.39s、s2 2.78→4.19s；每会话一个 `pi --mode rpc` 子进程） | ❌ 实测 `-32601` 未实现；`session/delete` 只删映射/会话文件，**不释放活动子进程** | ⚠️ `list` 对新建会话返回空（不可靠）；`delete` 可用 | 可用，但按 `process-per-worker` 用：无会话级回收，内存 = N 个 pi 进程；经 UHP 单任务实测 completed（deepseek-flash） |
-| pi 原生（1.5.2） | ❌ 无 ACP | — | — | — | 只有 `--mode rpc`（自有 JSONL 协议）；ACL 需要 `pi-acp` 这类适配层 |
+| **pi + `@openma/pi-acp` 0.1.8（in-process，推荐）** | ✅ 实测 | ✅ 实测（s1 0.52→1.54s、s2 0.53→1.50s 交错） | ✅ 实测（`{}`） | ✅ 实测（能列出历史会话） | `shared` + `Parallel`；经 UHP 两并发任务 2.1s 完成 |
+| pi + `@automatalabs/pi-acp` 0.9.4（in-process） | ✅ 实测 | ✅ 实测（s1 1.81→2.37s、s2 1.94→1.97s） | ✅ 实测（`{}`） | ⚠️ 无历史时会话列表为空 | 同样可用；能力声明 `{resume, fork, list, close}` |
+| pi + `pi-acp` 0.0.34（svkozak，每会话一个 pi 子进程） | ✅ | ✅ | ❌ `-32601`；`delete` 只删映射/文件，不释放活动子进程 | ⚠️ 新建会话返回空 | **不推荐**：只能 `process-per-worker`，无会话级回收 |
+| pi 原生（1.5.2） | ❌ 无 ACP | — | — | — | 只有 `--mode rpc`（自有 JSONL 协议）；必须配一个 ACP 适配层 |
 | claude-code（ACP 桥） | 待实测 | 待实测 | 待实测 | 待实测 | 未测 |
 
-pi-acp 的实测办法（需先 `pi auth login` 或环境里 `DEEPSEEK_API_KEY`，否则 `session/new` 直接返回 auth_required）：
-`python3 scripts/acp-capability-probe.py pi-acp --cwd <workspace> --env HOME=<隔离的 home>`
+### 实测办法
 
-opencode 的实测办法：`python3 scripts/acp-capability-probe.py <opencode> acp --cwd <workspace> --env XDG_CONFIG_HOME=...`。
-它打印 initialize 能力、两个会话的并发 prompt 时间线、`session/list`/`session/close` 结果。
-opencode 声明了 `sessionCapabilities: {list, close, delete, fork, resume, additionalDirectories}` 与 `loadSession: true`。
+```bash
+# opencode
+python3 scripts/acp-capability-probe.py <opencode> acp --cwd <workspace> --env XDG_CONFIG_HOME=...
 
-> 未实测的行按最保守假设处理：`Serial` + `process-per-worker`。测出来支持并发再改这张表。
+# pi（需先 pi auth login 或环境里 DEEPSEEK_API_KEY；HOME 指到隔离目录避免写用户 home）
+python3 scripts/acp-capability-probe.py <pi 的 ACP 适配器> --cwd <workspace> --env HOME=<隔离 home>
+```
+
+探针会打印 initialize 能力、两个会话的并发 prompt 时间线、`session/list`/`session/close` 结果。
+
+pi 的 ACP 适配器不止一个，强弱差别很大（除上表三个，还有 `@victor-software-house/pi-acp` 子进程桥、
+`@touchtechclub/pi-acp`、`@gugu-acp/pi-acp`、`beyond5959/acp-adapter`（Go，桥 Codex/Claude Code/pi）等，均未测）。
+**选型只看三项：`session/close` 有没有、`session/list` 准不准、是不是 in-process（单进程多会话）。**
+
+> 未实测的行按最保守假设处理：`Serial` + `process-per-worker`。
 
 ## 4. 回收与内存
 
@@ -70,4 +81,5 @@ opencode 声明了 `sessionCapabilities: {list, close, delete, fork, resume, add
 - ACP 没有 usage/cost 字段，不臆造。
 - `session/list` / `session/resume` 未接入：跨进程续跑目前由上层持有会话 id + UHP 侧历史实现。
 - `Parallel` 模式下若 agent 实际串行执行，只是拿不到并发收益，不影响正确性。
-- pi-acp 会在回合开头把 pi 的 startup info（版本/上下文/技能）当 assistant 文本发出来；要干净输出在 pi settings 里设 `quietStartup: true`。
+- pi 的 ACP 适配器普遍会把 startup info（版本/上下文/模型/诊断）当 assistant 文本发出来；
+  要干净输出看各适配器的 quiet 配置（如 pi settings 的 `quietStartup`），或在 UHP 侧按元数据过滤。
