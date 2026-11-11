@@ -17,6 +17,9 @@
 | [uhp-opencode/](uhp-opencode) | opencode 2.x 适配器（HTTP + SSE，中心仓 0.1.0） |
 | [uhp-acp/](uhp-acp) | ACP 通用适配器（stdio JSON-RPC，覆盖 dsh / pi / claude-code，中心仓 0.1.0） |
 
+服务端成品（多 harness 一个端点、TOML 配置、单二进制 + Docker）在独立仓：
+[uhp-server](https://atomgit.com/ystyle/uhp-server)。
+
 ## 示例
 
 ```toml
@@ -28,7 +31,7 @@
 eval "$(cjvs env zsh)" && eval "$(cjvs stdx-env zsh)"
 
 bash scripts/build.sh   # 构建三个成员
-bash scripts/test.sh    # 全部测试（162 条）
+bash scripts/test.sh    # 全部测试（167 条）
 ```
 
 真实链路冒烟（需要本机 opencode v2 与可用模型）：
