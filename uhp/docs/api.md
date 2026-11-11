@@ -29,8 +29,14 @@ let stream = client.createTaskStream(req)  // 流式（SSE）
 | `createTask(req)` / `createTaskWithInput(req, input)` | 建任务（非流式）；后者支持续跑与 `input_response` |
 | `createTaskStream(req)` / `createTaskStreamWithInput(req, input)` | 同上，返回 `TaskStream` |
 | `getResponse(id)` / `cancelResponse(id)` / `deleteResponse(id)` | 读回 / 取消 / 删除 |
+| `sessions(limit, cursor, harness)` / `getSession(id)` | 会话列表（可过滤 harness）/ 单个会话 |
+| `sessionTurns(id)` / `sessionFiles(id)` | 会话的任务历史 / 全部产物 |
+| `downloadFile(containerId, fileId)` | 产物**原始字节**（不做文本解码） |
+| `answerInput(prevId, requestId, answer)` / `answerInputStream(...)` | 回答 `input_request`，把答案链在上一轮响应上 |
 
 `HttpTransport` 是客户端可替换的传输接口（`send` / `stream`）；`StdHttpTransport` 是 stdx.net.http 实现。
+下载产物要求传输实现可选的 `BytesHttpTransport`（`sendBytes`）；没实现就抛 `ProtocolViolation`，
+而不是把二进制当文本读坏。头查询一律大小写不敏感（stdx 会把名字规范化成小写）。
 出错抛 `UhpError`：`code()` / `httpStatus` / `envelope`（含 `type`、`detail`、`retryable`）。
 
 ## 服务端（`uhp.server`）
@@ -60,6 +66,20 @@ server.serve()
 | `HarnessDriver` | 消费方实现的 agent 接缝（见下） |
 | `ScriptedHarness(steps, outcome)` | 测试/一致性用确定性 harness |
 | `EngineError(code, httpStatus, param, detailJson)` | 引擎级错误（HTTP 层翻译成错误封套） |
+
+### 宿主侧生命周期与动态 harness
+
+协议不规定 driver 的生命周期，所以这些是**可选的宿主 API**（不是协议端点）：
+
+| 接口 / 方法 | 用途 |
+|---|---|
+| `HarnessLifecycle`（`close()` / `closeSession(sessionId)`） | 持有子进程/长连接/agent 会话的 driver 实现它；Engine 只对实现了的 driver 调用 |
+| `engine.addHarness(ConfiguredHarness)` | 运行时注册 harness（id 重复 / base 未知即失败，base 列表随之更新） |
+| `engine.removeHarness(id)` | 卸载 harness；**有会话绑着就拒绝**（`harness_in_use`），卸载时对实现了生命周期的 driver 调 `close()` |
+| `engine.releaseSession(sessionId)` | 释放会话（协议没有删除会话端点），返回 false = 本来就不存在；会调 `closeSession` |
+| `engine.close()` | 关闭所有 driver 的对外资源（服务退出前调，幂等） |
+
+典型用法（长跑服务）：会话用完 → `releaseSession`；换成套 harness → `removeHarness` + `addHarness`；进程退出 → `close()`。
 
 ### HarnessDriver（实现这个就能接任意 agent）
 

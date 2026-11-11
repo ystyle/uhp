@@ -11,7 +11,7 @@ import std.io.*
 import stdx.net.http.*
 import stdx.net.tls.*
 
-public class StdHttpTransport <: HttpTransport {
+public class StdHttpTransport <: HttpTransport & BytesHttpTransport {
     private let baseUrl: String
 
     public init(baseUrl: String) {
@@ -43,6 +43,17 @@ public class StdHttpTransport <: HttpTransport {
         } catch (e: Exception) {
             client.close()
             throw e
+        }
+    }
+
+    // 二进制下载：结果按字节返回，不做任何文本解码。
+    public func sendBytes(req: UhpRequest): UhpBytesResponse {
+        let client = ClientBuilder().readTimeout(Duration.second * 120).build()
+        try {
+            let rsp = client.send(this.build(req))
+            return UhpBytesResponse(rsp.status, headersToMap(rsp.headers), readAllBytes(rsp.body))
+        } finally {
+            client.close()
         }
     }
 
@@ -120,6 +131,20 @@ func readAll(body: InputStream): String {
         chunks.add(all: buf[0..n])
     }
     return String.fromUtf8(chunks.toArray())
+}
+
+// 完整读取一个 InputStream 为字节（下载产物用；绝不经过 UTF-8 解码）。
+func readAllBytes(body: InputStream): Array<UInt8> {
+    let chunks = ArrayList<UInt8>()
+    let buf = Array<UInt8>(8192, repeat: 0)
+    while (true) {
+        let n = body.read(buf)
+        if (n <= 0) {
+            break
+        }
+        chunks.add(all: buf[0..n])
+    }
+    return chunks.toArray()
 }
 
 // 一个最小的一次性 HTTP POST（返回状态/头/文本体）。

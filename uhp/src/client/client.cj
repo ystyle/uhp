@@ -14,6 +14,7 @@ import std.io.*
 import uhp.types.handwritten.*
 import uhp.types.generated.*
 import uhp.types.base.*
+import uhp.types.codec.{fromJsonObjectWithExtras, newExtras}
 import uhp.transport.*
 
 // 本 SDK 能说哪些协议版本（新→旧）。版本表是运行期数据，不是编译期 feature。
@@ -172,6 +173,100 @@ public class UhpClient {
         return parseJson<ResponseDeleted>(resp.body)
     }
 
+    // ---------- 会话（Extended：sessionListing） ----------
+
+    public func sessions(limit!: Int64 = 20, cursor!: Option<String> = None,
+                         harness!: Option<String> = None): SessionList {
+        var q = "?limit=" + limit.toString()
+        match (cursor) {
+            case Some(c) => q = q + "&cursor=" + c
+            case None => ()
+        }
+        match (harness) {
+            case Some(h) => q = q + "&harness=" + h
+            case None => ()
+        }
+        return this.getJson<SessionList>("/v1/sessions" + q)
+    }
+
+    public func getSession(sessionId: String): Session {
+        return this.getJson<Session>("/v1/sessions/" + sessionId)
+    }
+
+    // 会话的任务历史（oldest first）。响应是 {turns: [...]}，协议没有给这个内联对象命名类型，
+    // 所以在客户端侧用一个最小的手写信封接住（未知字段照常保真）。
+    public func sessionTurns(sessionId: String): Array<TurnItem> {
+        return this.getJson<SessionTurns>("/v1/sessions/" + sessionId + "/turns").turns
+    }
+
+    // 会话的全部产物（不只最近一轮）。
+    public func sessionFiles(sessionId: String): Array<File> {
+        return this.getJson<SessionFiles>("/v1/sessions/" + sessionId + "/files").files
+    }
+
+    // ---------- 产物下载 ----------
+
+    // 下载一个产物。返回原始字节：调用方自己决定怎么落盘/解码。
+    // 传输不支持字节读时抛错，而不是把二进制当文本读坏。
+    public func downloadFile(containerId: String, fileId: String): Array<UInt8> {
+        let path = "/v1/containers/" + containerId + "/files/" + fileId + "/content"
+        let headers = this.commonHeaders()
+        let req = UhpRequest("GET", path, headers, None)
+        match (this.transport) {
+            case bt: BytesHttpTransport =>
+                let rsp = bt.sendBytes(req)
+                if (!rsp.isSuccess()) {
+                    // 错误体是 JSON 封套：按字节读回来再走统一错误映射
+                    let body = String.fromUtf8(rsp.body)
+                    throw errorFromResponse(UhpResponse(rsp.status, rsp.headers, body))
+                }
+                match (rsp.header("UHP-Version")) {
+                    case Some(_) => ()
+                    case None => throw ProtocolViolation("响应缺少 UHP-Version 头（HTTP " + rsp.status.toString() + "）")
+                }
+                return rsp.body
+            case _ => throw ProtocolViolation("当前传输不支持按字节读响应（下载产物需要 BytesHttpTransport）")
+        }
+    }
+
+    // ---------- 回答问题（incomplete + input_required 的续跑） ----------
+
+    // 回答上一轮的问题：开一个新的响应，把它链在 previousResponseId 上。
+    // input 里一条 input_response 指明「回答哪个问题、答案是什么」——由服务端校验
+    // 问题是否还没被答过、答案是否在选项里。
+    public func answerInput(previousResponseId: String, inputRequestId: String, answer: String,
+                            model!: Option<String> = None,
+                            idempotencyKey!: Option<String> = None): Response {
+        let key = match (idempotencyKey) {
+            case Some(k) => k
+            case None => newIdempotencyKey()
+        }
+        let body = answerBody(previousResponseId, inputRequestId, answer, model: model, stream: false)
+        let resp = this.sendAuthed("POST", "/v1/responses", Some(body), Some(key))
+        if (!resp.isSuccess()) {
+            throw errorFromResponse(resp)
+        }
+        checkVersionHeader(resp)
+        return parseJson<Response>(resp.body)
+    }
+
+    public func answerInputStream(previousResponseId: String, inputRequestId: String, answer: String,
+                                  model!: Option<String> = None,
+                                  idempotencyKey!: Option<String> = None): TaskStream {
+        let key = match (idempotencyKey) {
+            case Some(k) => k
+            case None => newIdempotencyKey()
+        }
+        let headers = this.commonHeaders()
+        headers["Accept"] = "text/event-stream"
+        headers["Idempotency-Key"] = key
+        let body = answerBody(previousResponseId, inputRequestId, answer, model: model, stream: true)
+        match (this.transport.stream(UhpRequest("POST", "/v1/responses", headers, Some(body)))) {
+            case Started(stream) => return TaskStream(stream)
+            case Failed(resp) => throw errorFromResponse(resp)
+        }
+    }
+
     // ---------- 内部 ----------
 
     private func commonHeaders(): HashMap<String, String> {
@@ -290,3 +385,67 @@ public func toJsonStringOf<T>(value: T): String where T <: JsonSerializable {
     w.flush()
     return String.fromUtf8(out.bytes())
 }
+
+// ---------- 协议里没有命名类型的两个内联信封 ----------
+
+// GET /v1/sessions/{id}/turns 的响应体：{turns: [...]}
+class SessionTurns <: JsonDeserializable<SessionTurns> {
+    public var turns: Array<TurnItem> = []
+
+    public static func fromJson(r: JsonReader): SessionTurns {
+        let res = SessionTurns()
+        fromJsonObjectWithExtras(
+            r,
+            [
+                ("turns", { => res.turns = r.readValue<Array<TurnItem>>() })
+            ],
+            newExtras()
+        )
+        return res
+    }
+}
+
+// GET /v1/sessions/{id}/files 的响应体：{files: [...]}
+// 注意：生成层里的 FileList 是 harness 技能文件的形状（files: SkillFile[]），不是这个。
+class SessionFiles <: JsonDeserializable<SessionFiles> {
+    public var files: Array<File> = []
+
+    public static func fromJson(r: JsonReader): SessionFiles {
+        let res = SessionFiles()
+        fromJsonObjectWithExtras(
+            r,
+            [
+                ("files", { => res.files = r.readValue<Array<File>>() })
+            ],
+            newExtras()
+        )
+        return res
+    }
+}
+
+// 回答问题（input_response）的请求体。
+// 和 taskBody 一样手写：生成的 CreateResponseRequest.input 是 Raw，拼不出类型安全的 input_response item。
+func answerBody(previousResponseId: String, inputRequestId: String, answer: String,
+                model!: Option<String> = None, stream!: Bool = false): String {
+    let out = ByteBuffer()
+    let w = JsonWriter(out)
+    w.startObject()
+    w.writeName("previous_response_id").writeValue(previousResponseId)
+    w.writeName("input")
+    w.startArray()
+    w.startObject()
+    w.writeName("type").writeValue("input_response")
+    w.writeName("input_request_id").writeValue(inputRequestId)
+    w.writeName("answer").writeValue(answer)
+    w.endObject()
+    w.endArray()
+    match (model) {
+        case Some(m) => w.writeName("model").writeValue(m)
+        case None => ()
+    }
+    w.writeName("stream").writeValue(stream)
+    w.endObject()
+    w.flush()
+    return String.fromUtf8(out.bytes())
+}
+
