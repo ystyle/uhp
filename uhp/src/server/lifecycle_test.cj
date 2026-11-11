@@ -181,3 +181,29 @@ func driver_without_lifecycle_is_left_alone(): Unit {
     @Expect(engine.releaseSession(sid), true)
     engine.close()
 }
+
+@Test
+func release_session_refuses_busy_and_reap_releases_idle(): Unit {
+    // TTL 驱逐的两个前提：忙的不动、闲的才收；收的时候要通知 driver。
+    let driver = LifecycleDriver("hi")
+    let engine = Engine([ConfiguredHarness("only", "only", "scripted", "auto", driver)])
+    let r = engine.createTask(principalOf(), taskReq("only", "hello"))
+    let sid = sessionIdOf(r.response)
+
+    // 刚跑完的会话还没到 TTL：不该被收
+    @Expect(engine.reapIdleSessions(3600), 0)
+
+    // 用一个很远的未来时间点筛：包会被收，而且 driver 收到 closeSession
+    let future = nowSeconds() + 7200
+    @Expect(engine.reapIdleSessions(60, nowSeconds: future), 1)
+    @Expect(driver.sessionCloses().size, 1)
+    @Expect(driver.sessionCloses()[0], sid)
+
+    // 已被收掉的会话再收一次：什么都不该发生
+    @Expect(engine.reapIdleSessions(60, nowSeconds: future), 0)
+    @Expect(driver.sessionCloses().size, 1)
+
+    // idleSeconds <= 0 = 关闭该策略
+    @Expect(engine.reapIdleSessions(0, nowSeconds: future), 0)
+}
+

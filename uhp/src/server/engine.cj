@@ -1824,37 +1824,71 @@ public class Engine {
     // 释放一个会话（宿主侧的回收入口）。
     //
     // 协议没有「删除会话」端点，会话的寿命由宿主决定；宿主在用完（或按 TTL 驱逐）之后调这里，
-    // 才能让 driver 也把 agent 侧的会话作用域还回去。返回 false = 会话本来就不存在。
+    // 才能让 driver 也把 agent 侧的会话作用域还回去。
+    //
+    // 返回 false = 没释放：会话本来就不存在，或者**正有回合在跑**。后者不能释放——
+    // 驱动还在往这个会话的事件通道写东西，把状态拿掉会让它写进一个已消失的会话。
     public func releaseSession(sessionId: String): Bool {
-        // synchronized 块里不能提前 return，且闭包内不做类型推断兜底——用显式标注的局部量带出来
-        var existed = false
-        var driver: Option<HarnessDriver> = None
+        return this.releaseSessions([sessionId]) == 1
+    }
+
+    // 释放一批会话（TTL 驱逐用它）。逐个尝试，跑的回合跳过；返回真正释放的条数。
+    // 关闭一律在锁外：releaseIdleLocked 只摘状态，closeSession 交给调用方。
+    public func releaseSessions(sessionIds: Array<String>): Int64 {
+        let released = ArrayList<(HarnessDriver, String)>()
         synchronized(this.lock) {
-            match (this.sessions.get(sessionId)) {
-                case Some(s) =>
-                    this.sessions.remove(sessionId)
-                    this.sessionOwners.remove(sessionId)
-                    this.records.remove(sessionId)
-                    existed = true
-                    driver = match (this.harnesses.get(s.harnessId)) {
-                        case Some(h) => Some(h.driver)
-                        case None => None
-                    }
-                case None => ()
+            for (sid in sessionIds) {
+                match (this.sessions.get(sid)) {
+                    case Some(s) =>
+                        if (s.isBusy()) {
+                            continue
+                        }
+                        this.sessions.remove(sid)
+                        this.sessionOwners.remove(sid)
+                        this.records.remove(sid)
+                        match (this.harnesses.get(s.harnessId)) {
+                            case Some(h) => released.add((h.driver, sid))
+                            case None => ()
+                        }
+                    case None => ()
+                }
             }
         }
-        if (!existed) {
-            return false
-        }
-        // 关闭在锁外：driver 可能要等子进程/连接收尾
-        match (driver) {
-            case Some(d) => match (d) {
-                case lc: HarnessLifecycle => lc.closeSession(sessionId)
+        for ((d, sid) in released) {
+            match (d) {
+                case lc: HarnessLifecycle => lc.closeSession(sid)
                 case _ => ()
             }
-            case None => ()
         }
-        return true
+        return Int64(released.size)
+    }
+
+    // 驱逐空闲会话：updatedAt 早于 now - idleSeconds、且没有回合在跑的会话。
+    //
+    // 长跑的服务里，会话是内存与 agent 侧作用域的主要增长源；协议不会替你回收，
+    // 所以宿主需要一个入口按自己的策略（TTL）收口。
+    public func reapIdleSessions(idleSeconds: Int64, nowSeconds!: Int64 = nowSeconds()): Int64 {
+        if (idleSeconds <= 0) {
+            return 0
+        }
+        let cutoff = nowSeconds - idleSeconds
+        let victims = ArrayList<String>()
+        synchronized(this.lock) {
+            for ((sid, rec) in this.records) {
+                if (rec.updatedAt <= cutoff) {
+                    match (this.sessions.get(sid)) {
+                        case Some(s) => if (!s.isBusy()) {
+                                victims.add(sid)
+                            }
+                        case None => ()
+                    }
+                }
+            }
+        }
+        if (victims.size == 0) {
+            return 0
+        }
+        return this.releaseSessions(victims.toArray())
     }
 
     // 关闭所有 driver 的对外资源（服务退出前调）。可重复调用。

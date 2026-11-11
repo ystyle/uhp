@@ -76,7 +76,9 @@ server.serve()
 | `HarnessLifecycle`（`close()` / `closeSession(sessionId)`） | 持有子进程/长连接/agent 会话的 driver 实现它；Engine 只对实现了的 driver 调用 |
 | `engine.addHarness(ConfiguredHarness)` | 运行时注册 harness（id 重复 / base 未知即失败，base 列表随之更新） |
 | `engine.removeHarness(id)` | 卸载 harness；**有会话绑着就拒绝**（`harness_in_use`），卸载时对实现了生命周期的 driver 调 `close()` |
-| `engine.releaseSession(sessionId)` | 释放会话（协议没有删除会话端点），返回 false = 本来就不存在；会调 `closeSession` |
+| `engine.releaseSession(sessionId)` | 释放会话（协议没有删除会话端点）；返回 false = 本来就不存在，**或正有回合在跑**（不能摘状态）；会调 `closeSession` |
+| `engine.releaseSessions(ids)` | 批量版，逐个尝试（忙的跳过），返回释放条数 |
+| `engine.reapIdleSessions(idleSeconds)` | TTL 驱逐：收掉空闲且不忙的会话，返回条数；`idleSeconds <= 0` = 关闭 |
 | `engine.close()` | 关闭所有 driver 的对外资源（服务退出前调，幂等） |
 
 典型用法（长跑服务）：会话用完 → `releaseSession`；换成套 harness → `removeHarness` + `addHarness`；进程退出 → `close()`。
