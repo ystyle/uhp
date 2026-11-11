@@ -64,6 +64,43 @@ public enum StreamStart {
     | Failed(UhpResponse)
 }
 
+// 字节体响应：下载产物（图片、压缩包）不能用 String 承载——UTF-8 解码会把二进制改坏。
+public class UhpBytesResponse {
+    public let status: UInt16
+    public let headers: HashMap<String, String>
+    public let body: Array<UInt8>
+
+    public init(status: UInt16, headers: HashMap<String, String>, body: Array<UInt8>) {
+        this.status = status
+        this.headers = headers
+        this.body = body
+    }
+
+    public func isSuccess(): Bool {
+        return this.status >= 200 && this.status < 300
+    }
+
+    // HTTP 头大小写不敏感：stdx 返回的名字会被规范化成小写，按原样查会漏。
+    public func header(name: String): Option<String> {
+        let lower = name.toAsciiLower()
+        for ((k, v) in this.headers) {
+            if (k.toAsciiLower() == lower) {
+                return Some(v)
+            }
+        }
+        return None
+    }
+}
+
+// 可选能力：能按字节读响应的传输。
+//
+// 为什么是独立接口而不是塞进 HttpTransport：多数调用方只要 JSON；实现方（测试里的假传输、
+// 进程内载体）不必为了满足接口去实现二进制路径。客户端发现传输不支持时给出明确错误，
+// 而不是悄悄把二进制当文本读坏。
+public interface BytesHttpTransport {
+    func sendBytes(req: UhpRequest): UhpBytesResponse
+}
+
 public interface HttpTransport {
     // 非流式请求（discovery / 单次任务 / 读回 / 取消 / 删除）
     func send(req: UhpRequest): UhpResponse

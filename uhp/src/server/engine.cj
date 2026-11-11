@@ -174,7 +174,8 @@ public class Engine {
     private let idemKeys: HashMap<String, String> = HashMap<String, String>()
     private let idemBodies: HashMap<String, String> = HashMap<String, String>()
     private var factory: Option<(String) -> HarnessDriver> = None
-    private let supportedBases: Array<String>
+    // 动态增删 harness 会改变它（createHarness 的 base 校验用它）
+    private var supportedBases: Array<String>
     private let files: HashMap<String, StoredFile> = HashMap<String, StoredFile>()
     // 分享（Sessions §5）与每个响应的文本（共享视图用，不存 provider 侧任何东西）
     private let shares: HashMap<String, ShareRecord> = HashMap<String, ShareRecord>()
@@ -1750,6 +1751,126 @@ public class Engine {
 
     public func supportedBaseList(): Array<String> {
         return this.supportedBases
+    }
+
+    // ---------- 宿主侧 harness 生命周期（不是协议端点） ----------
+    //
+    // 协议里的 harness 管理（createHarness / deleteHarness）是给客户端用的；
+    // 这三个方法是给**宿主**用的：uhp-server 这类产品按部署配置装配 driver 时用得上。
+    // 协议面与这些方法共享同一份权威数据（harnesses / harnessRecords / supportedBases）。
+
+    // 注册一个 harness。id 重复或 base 未声明支持 → 立即失败（配置错误不该等到第一个任务）。
+    public func addHarness(h: ConfiguredHarness): Unit {
+        synchronized(this.lock) {
+            if (this.harnesses.contains(h.id)) {
+                throw EngineError("invalid_input", UInt16(422), param: Some("harness_id"))
+            }
+            this.harnesses[h.id] = h
+            let rec = HarnessRecord(h.id, h.name, h.base)
+            rec.defaultModel = Some(h.defaultModel)
+            this.harnessRecords[h.id] = rec
+            if (this.defaultHarness == "") {
+                this.defaultHarness = h.id
+            }
+            if (!this.supportedBases.contains(h.base)) {
+                let next = ArrayList<String>()
+                for (b in this.supportedBases) {
+                    next.add(b)
+                }
+                next.add(h.base)
+                this.supportedBases = next.toArray()
+            }
+        }
+    }
+
+    // 卸载一个 harness。
+    //
+    // 有会话绑定在它上面就拒绝：会话中途没有 harness 可不行，静默丢会话比报错更难查。
+    // 宿主应当先 releaseSession 把会话收回，再卸载。
+    // driver 实现了 HarnessLifecycle 才会被 close()——协议不规定 driver 生命周期。
+    public func removeHarness(id: String): Unit {
+        let driver: Option<HarnessDriver> = synchronized(this.lock) {
+            let h = match (this.harnesses.get(id)) {
+                case Some(v) => v
+                case None => throw EngineError("harness_not_found", UInt16(404))
+            }
+            for ((_, s) in this.sessions) {
+                if (s.acceptsHarness(id)) {
+                    throw EngineError("harness_in_use", UInt16(409), param: Some("harness_id"))
+                }
+            }
+            this.harnesses.remove(id)
+            this.harnessRecords.remove(id)
+            if (this.defaultHarness == id) {
+                this.defaultHarness = ""
+                for ((k, _) in this.harnesses) {
+                    if (this.defaultHarness == "") {
+                        this.defaultHarness = k
+                    }
+                }
+            }
+            Some(h.driver)
+        }
+        // 关闭要在锁外做：driver.close() 可能等子进程退出，抱着锁会卡住其它请求
+        match (driver) {
+            case Some(d) => match (d) {
+                case lc: HarnessLifecycle => lc.close()
+                case _ => ()
+            }
+            case None => ()
+        }
+    }
+
+    // 释放一个会话（宿主侧的回收入口）。
+    //
+    // 协议没有「删除会话」端点，会话的寿命由宿主决定；宿主在用完（或按 TTL 驱逐）之后调这里，
+    // 才能让 driver 也把 agent 侧的会话作用域还回去。返回 false = 会话本来就不存在。
+    public func releaseSession(sessionId: String): Bool {
+        // synchronized 块里不能提前 return，且闭包内不做类型推断兜底——用显式标注的局部量带出来
+        var existed = false
+        var driver: Option<HarnessDriver> = None
+        synchronized(this.lock) {
+            match (this.sessions.get(sessionId)) {
+                case Some(s) =>
+                    this.sessions.remove(sessionId)
+                    this.sessionOwners.remove(sessionId)
+                    this.records.remove(sessionId)
+                    existed = true
+                    driver = match (this.harnesses.get(s.harnessId)) {
+                        case Some(h) => Some(h.driver)
+                        case None => None
+                    }
+                case None => ()
+            }
+        }
+        if (!existed) {
+            return false
+        }
+        // 关闭在锁外：driver 可能要等子进程/连接收尾
+        match (driver) {
+            case Some(d) => match (d) {
+                case lc: HarnessLifecycle => lc.closeSession(sessionId)
+                case _ => ()
+            }
+            case None => ()
+        }
+        return true
+    }
+
+    // 关闭所有 driver 的对外资源（服务退出前调）。可重复调用。
+    public func close(): Unit {
+        let drivers = ArrayList<HarnessDriver>()
+        synchronized(this.lock) {
+            for ((_, h) in this.harnesses) {
+                drivers.add(h.driver)
+            }
+        }
+        for (d in drivers) {
+            match (d) {
+                case lc: HarnessLifecycle => lc.close()
+                case _ => ()
+            }
+        }
     }
 
     public func createHarness(p: Principal, body: String, idemKey: Option<String>): HarnessRecord {

@@ -130,6 +130,25 @@ public interface HarnessDriver {
     func run(ctx: TurnContext, sink: TurnSink, cancel: CancelToken): TurnOutcome
 }
 
+// 可选生命周期：只给「持有了外部资源」的 driver 实现。
+//
+// 契约（为什么是可选而不是塞进 HarnessDriver）：
+//   * 协议没有规定 driver 的生命周期，把它做成必需方法会逼所有实现写空壳；
+//   * 不实现 = 声明「本 driver 没有需要显式回收的东西」，Engine 直接跳过。
+//
+// 谁必须实现：拉起子进程 / 建长连接 / 持有会话作用域的适配器。
+// 不回收的后果是资源随会话数线性累积（子进程、连接、agent 侧会话）。
+//
+// 调用时机由宿主决定（Engine 不会自动调）：
+//   closeSession(sessionId) —— 会话被释放时（Engine.releaseSession / 宿主自己的 TTL 驱逐）；
+//   close()                 —— 服务关闭、driver 被替换、动态卸载 harness 时。
+// 两者都要求幂等，且 close() 之后 Engine 不再使用该 driver。
+public interface HarnessLifecycle {
+    func close(): Unit
+    // 参数是 UHP 侧的会话 id（不是 driver 内部的会话号）
+    func closeSession(sessionId: String): Unit
+}
+
 // ---------- ScriptedHarness：给测试与一致性 SUT 用的确定性 driver ----------
 
 public enum ScriptStep {
