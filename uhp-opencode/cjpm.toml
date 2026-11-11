@@ -1,12 +1,12 @@
 [dependencies]
   # SDK 是 workspace 的 uhp 成员：按版本声明，由 workspace 解析到本地成员（不写 path 依赖）
-  "uhp" = "0.1.0"
+  "uhp" = "0.1.1"
 
 [package]
   cjc-version = "1.2.0"
   name = "uhp_opencode"
   description = "opencode 2.x 的 UHP HarnessDriver 适配器（消费方代码，不是 SDK 本体）"
-  version = "0.1.0"
+  version = "0.1.1"
   license = ["MulanPSL-2.0"]
   authors = ["ystyle"]
   repository = "https://atomgit.com/ystyle/uhp"

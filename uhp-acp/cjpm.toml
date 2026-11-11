@@ -1,6 +1,6 @@
 [dependencies]
   # SDK 是 workspace 成员（按版本声明由 workspace 解析）；ACP 用中心仓版本
-  "uhp" = "0.1.0"
+  "uhp" = "0.1.1"
   "acp" = "0.2.7"
   # acp-cj 的传输层签名用 ystyle::jsonrpc Result/JsonRpcError，本仓 driver 直接匹配它
   "ystyle::jsonrpc" = "0.7.9"
@@ -11,7 +11,7 @@
   cjc-version = "1.2.0"
   name = "uhp_acp"
   description = "ACP（Agent Client Protocol）的 UHP HarnessDriver 适配器（消费方代码）"
-  version = "0.1.0"
+  version = "0.1.1"
   license = ["MulanPSL-2.0"]
   authors = ["ystyle"]
   repository = "https://atomgit.com/ystyle/uhp"

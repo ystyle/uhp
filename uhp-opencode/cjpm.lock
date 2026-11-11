@@ -1,4 +1,4 @@
 version = 0
 
 [requires]
-  uhp = {version = "0.1.0"}
+  uhp = {version = "0.1.1"}
